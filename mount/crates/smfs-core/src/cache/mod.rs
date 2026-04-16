@@ -10,6 +10,7 @@
 mod db;
 mod file;
 mod fs;
+pub mod profile;
 
 pub use db::{Db, DEFAULT_CHUNK_SIZE, DENTRY_CACHE_MAX, ROOT_INO};
 pub use fs::SupermemoryFs;
