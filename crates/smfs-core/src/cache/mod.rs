@@ -1,7 +1,7 @@
 //! Local SQLite cache.
 //!
 //! Persists inodes, dentries, file chunks, and sync state between daemon
-//! with supermemoryfs-specific additions.
+//! restarts.
 //!
 //! The cache is a *passive store*: it never calls the API or spawns
 //! background tasks. The sync engine (in [`crate::sync`]) is the only

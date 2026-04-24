@@ -492,6 +492,7 @@ where
     });
 
     // Give the listener a moment to accept connections before the mount
+    // command tries to reach it.
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Run the blocking `mount_nfs` subprocess on a dedicated blocking
