@@ -1,6 +1,13 @@
 import type Supermemory from "supermemory";
+import { efbig, eio, enoent } from "./errors.js";
 import { PathIndex } from "./path-index.js";
 import { SessionCache, type SessionCacheOptions } from "./session-cache.js";
+
+function normalizeStatus(s: string): DocStatus {
+  if (s === "done") return "done";
+  if (s === "failed") return "failed";
+  return "processing";
+}
 
 // Three states the agent actually acts on. Volume maps any non-done/non-failed
 // server status to "processing" so SDK additions don't break our types.
@@ -99,17 +106,56 @@ export class SupermemoryVolume {
   // --- document CRUD ---
 
   async addDoc(
-    _path: string,
-    _content: string | Uint8Array,
+    path: string,
+    content: string | Uint8Array,
   ): Promise<{ id: string; status: DocStatus }> {
-    throw new Error("not implemented (B2)");
+    if (content instanceof Uint8Array) {
+      throw efbig(path);
+    }
+
+    const existing = this.pathIndex.resolve(path);
+    let id: string;
+    let serverStatus: string;
+
+    try {
+      if (existing) {
+        const resp = await this.client.documents.update(existing, {
+          content,
+          containerTag: this.containerTag,
+          // @ts-expect-error filepath not in DocumentUpdateParams typing yet
+          filepath: path,
+        });
+        const r = resp as unknown as { id?: string; status?: string };
+        id = r.id ?? existing;
+        serverStatus = r.status ?? "unknown";
+      } else {
+        const resp = await this.client.documents.add({
+          content,
+          containerTag: this.containerTag,
+          // @ts-expect-error filepath not in DocumentAddParams typing yet
+          filepath: path,
+        });
+        id = resp.id;
+        serverStatus = resp.status;
+      }
+    } catch (err) {
+      throw eio(`addDoc(${path}): ${(err as Error).message}`);
+    }
+
+    const status = normalizeStatus(serverStatus);
+    this.pathIndex.insert(path, id);
+    this.cache.set(path, content, status);
+    return { id, status };
   }
 
   async updateDoc(
-    _path: string,
-    _content: string | Uint8Array,
+    path: string,
+    content: string | Uint8Array,
   ): Promise<{ id: string; status: DocStatus }> {
-    throw new Error("not implemented (B2)");
+    if (!this.pathIndex.resolve(path)) {
+      throw enoent(path);
+    }
+    return this.addDoc(path, content);
   }
 
   async getDoc(_path: string): Promise<DocResult | null> {
