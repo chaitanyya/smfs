@@ -1,5 +1,5 @@
 import type Supermemory from "supermemory";
-import { efbig, eio, enoent } from "./errors.js";
+import { ebusy, efbig, eio, enoent } from "./errors.js";
 import { PathIndex } from "./path-index.js";
 import { SessionCache, type SessionCacheOptions } from "./session-cache.js";
 
@@ -203,12 +203,80 @@ export class SupermemoryVolume {
       : { id: docId, content, status };
   }
 
-  async removeDoc(_path: string): Promise<void> {
-    throw new Error("not implemented (B2)");
+  async removeDoc(path: string): Promise<void> {
+    const docId = this.pathIndex.resolve(path);
+    if (!docId) return;
+
+    try {
+      await this.client.documents.delete(docId);
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status === 409) throw ebusy(path);
+      if (status === 404) {
+        this.pathIndex.remove(path);
+        this.cache.delete(path);
+        return;
+      }
+      throw eio(`removeDoc(${path}): ${(err as Error).message}`);
+    }
+
+    this.pathIndex.remove(path);
+    this.cache.delete(path);
   }
 
-  async removeByPrefix(_prefix: string): Promise<RemoveByPrefixResult> {
-    throw new Error("not implemented (B2)");
+  async removeByPrefix(prefix: string): Promise<RemoveByPrefixResult> {
+    const matches: Array<{ id: string; filepath: string }> = [];
+    let page = 1;
+    while (true) {
+      const resp = await this.client.documents.list({
+        containerTags: [this.containerTag],
+        limit: 100,
+        page,
+      });
+      for (const m of resp.memories ?? []) {
+        const fp = (m as unknown as { filepath?: string }).filepath;
+        if (typeof fp === "string" && fp.startsWith(prefix)) {
+          matches.push({ id: m.id, filepath: fp });
+        }
+      }
+      const total = resp.pagination?.totalPages ?? 1;
+      if (page >= total) break;
+      page++;
+    }
+
+    if (matches.length === 0) return { deleted: 0, errors: [] };
+
+    let deleted = 0;
+    const errors: Error[] = [];
+    for (let i = 0; i < matches.length; i += 100) {
+      const batch = matches.slice(i, i + 100);
+      try {
+        const resp = await this.client.documents.deleteBulk({
+          ids: batch.map((m) => m.id),
+        });
+        deleted += resp.deletedCount ?? 0;
+        for (const e of resp.errors ?? []) {
+          errors.push(new Error(`${e.id}: ${e.error}`));
+        }
+      } catch (err) {
+        const msg = (err as Error).message;
+        for (const m of batch) errors.push(new Error(`${m.id}: ${msg}`));
+      }
+    }
+
+    const erredIds = new Set<string>();
+    for (const e of errors) {
+      const id = e.message.split(":")[0]?.trim();
+      if (id) erredIds.add(id);
+    }
+    for (const m of matches) {
+      if (!erredIds.has(m.id)) {
+        this.pathIndex.remove(m.filepath);
+        this.cache.delete(m.filepath);
+      }
+    }
+
+    return { deleted, errors };
   }
 
   async moveDoc(_from: string, _to: string): Promise<void> {

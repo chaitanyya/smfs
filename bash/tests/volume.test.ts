@@ -346,3 +346,213 @@ describe("SupermemoryVolume.getDoc", () => {
     expect(result?.content).toBe("");
   });
 });
+
+function makeVolumeWithDeleteMock(opts: { rejectStatus?: number } = {}) {
+  const del = opts.rejectStatus
+    ? vi
+        .fn()
+        .mockRejectedValue(
+          Object.assign(new Error(`http ${opts.rejectStatus}`), { status: opts.rejectStatus }),
+        )
+    : vi.fn().mockResolvedValue(undefined);
+  const client = {
+    documents: { add: vi.fn(), update: vi.fn(), get: vi.fn(), delete: del, deleteBulk: vi.fn() },
+  } as unknown as Supermemory;
+  const volume = new SupermemoryVolume(client, "tag");
+  return { volume, del };
+}
+
+describe("SupermemoryVolume.removeDoc", () => {
+  it("is a no-op when path is not in pathIndex (no SDK call)", async () => {
+    const { volume, del } = makeVolumeWithDeleteMock();
+    await volume.removeDoc("/never-here.md");
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it("calls delete(docId) and evicts pathIndex + cache on success", async () => {
+    const { volume, del } = makeVolumeWithDeleteMock();
+    volume.pathIndex.insert("/a.md", "doc-a");
+    volume.cache.set("/a.md", "cached", "done");
+    await volume.removeDoc("/a.md");
+    expect(del).toHaveBeenCalledWith("doc-a");
+    expect(volume.pathIndex.resolve("/a.md")).toBeNull();
+    expect(volume.cache.get("/a.md")).toBeNull();
+  });
+
+  it("throws ebusy when SDK returns 409", async () => {
+    const { volume } = makeVolumeWithDeleteMock({ rejectStatus: 409 });
+    volume.pathIndex.insert("/a.md", "doc-a");
+    await expect(volume.removeDoc("/a.md")).rejects.toMatchObject({ code: "EBUSY" });
+    await expect(volume.removeDoc("/a.md")).rejects.toBeInstanceOf(FsError);
+  });
+
+  it("treats 404 as soft success and evicts local state", async () => {
+    const { volume } = makeVolumeWithDeleteMock({ rejectStatus: 404 });
+    volume.pathIndex.insert("/a.md", "doc-a");
+    volume.cache.set("/a.md", "x", "done");
+    await expect(volume.removeDoc("/a.md")).resolves.toBeUndefined();
+    expect(volume.pathIndex.resolve("/a.md")).toBeNull();
+    expect(volume.cache.get("/a.md")).toBeNull();
+  });
+
+  it("throws eio for non-409, non-404 errors", async () => {
+    const { volume } = makeVolumeWithDeleteMock({ rejectStatus: 500 });
+    volume.pathIndex.insert("/a.md", "doc-a");
+    await expect(volume.removeDoc("/a.md")).rejects.toMatchObject({ code: "EIO" });
+  });
+});
+
+function makeVolumeForBulk(
+  listResponses: Array<{
+    memories: Array<{ id: string; filepath?: string }>;
+    pagination: { currentPage: number; totalPages: number; totalItems: number };
+  }>,
+  bulkResponse: {
+    deletedCount: number;
+    success: boolean;
+    errors?: Array<{ id: string; error: string }>;
+  } = { deletedCount: 0, success: true },
+) {
+  const list = vi.fn();
+  for (const r of listResponses) list.mockResolvedValueOnce(r);
+  const deleteBulk = vi.fn().mockResolvedValue(bulkResponse);
+  const client = {
+    documents: {
+      add: vi.fn(),
+      update: vi.fn(),
+      get: vi.fn(),
+      delete: vi.fn(),
+      list,
+      deleteBulk,
+    },
+  } as unknown as Supermemory;
+  const volume = new SupermemoryVolume(client, "tag");
+  return { volume, list, deleteBulk };
+}
+
+describe("SupermemoryVolume.removeByPrefix", () => {
+  it("returns {deleted:0, errors:[]} when no matches; deleteBulk not called", async () => {
+    const { volume, deleteBulk } = makeVolumeForBulk([
+      {
+        memories: [],
+        pagination: { currentPage: 1, totalPages: 1, totalItems: 0 },
+      },
+    ]);
+    const result = await volume.removeByPrefix("/anything/");
+    expect(result).toEqual({ deleted: 0, errors: [] });
+    expect(deleteBulk).not.toHaveBeenCalled();
+  });
+
+  it("calls deleteBulk once with all matching ids and returns deleted count", async () => {
+    const { volume, deleteBulk } = makeVolumeForBulk(
+      [
+        {
+          memories: [
+            { id: "id1", filepath: "/notes/a.md" },
+            { id: "id2", filepath: "/notes/b.md" },
+          ],
+          pagination: { currentPage: 1, totalPages: 1, totalItems: 2 },
+        },
+      ],
+      { deletedCount: 2, success: true },
+    );
+    volume.pathIndex.insert("/notes/a.md", "id1");
+    volume.pathIndex.insert("/notes/b.md", "id2");
+    const result = await volume.removeByPrefix("/notes/");
+    expect(deleteBulk).toHaveBeenCalledTimes(1);
+    expect(deleteBulk.mock.calls[0]?.[0]).toEqual({ ids: ["id1", "id2"] });
+    expect(result.deleted).toBe(2);
+    expect(result.errors).toEqual([]);
+    expect(volume.pathIndex.resolve("/notes/a.md")).toBeNull();
+    expect(volume.pathIndex.resolve("/notes/b.md")).toBeNull();
+  });
+
+  it("excludes memories without filepath and memories outside the prefix", async () => {
+    const { volume, deleteBulk } = makeVolumeForBulk(
+      [
+        {
+          memories: [
+            { id: "id1", filepath: "/notes/a.md" },
+            { id: "id2" }, // no filepath
+            { id: "id3", filepath: "/other/b.md" },
+          ],
+          pagination: { currentPage: 1, totalPages: 1, totalItems: 3 },
+        },
+      ],
+      { deletedCount: 1, success: true },
+    );
+    await volume.removeByPrefix("/notes/");
+    expect(deleteBulk.mock.calls[0]?.[0]).toEqual({ ids: ["id1"] });
+  });
+
+  it("paginates through multiple pages", async () => {
+    const { volume, list, deleteBulk } = makeVolumeForBulk(
+      [
+        {
+          memories: [{ id: "id1", filepath: "/x/a.md" }],
+          pagination: { currentPage: 1, totalPages: 2, totalItems: 2 },
+        },
+        {
+          memories: [{ id: "id2", filepath: "/x/b.md" }],
+          pagination: { currentPage: 2, totalPages: 2, totalItems: 2 },
+        },
+      ],
+      { deletedCount: 2, success: true },
+    );
+    await volume.removeByPrefix("/x/");
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(deleteBulk.mock.calls[0]?.[0]).toEqual({ ids: ["id1", "id2"] });
+  });
+
+  it("splits matches >100 into multiple deleteBulk calls", async () => {
+    const memories = Array.from({ length: 150 }, (_, i) => ({
+      id: `id${i}`,
+      filepath: `/big/${i}.md`,
+    }));
+    const { volume, deleteBulk } = makeVolumeForBulk(
+      [
+        {
+          memories,
+          pagination: { currentPage: 1, totalPages: 1, totalItems: 150 },
+        },
+      ],
+      { deletedCount: 100, success: true },
+    );
+    deleteBulk.mockResolvedValueOnce({ deletedCount: 100, success: true });
+    deleteBulk.mockResolvedValueOnce({ deletedCount: 50, success: true });
+    const result = await volume.removeByPrefix("/big/");
+    expect(deleteBulk).toHaveBeenCalledTimes(2);
+    const firstBatch = deleteBulk.mock.calls[0]?.[0] as { ids: string[] };
+    const secondBatch = deleteBulk.mock.calls[1]?.[0] as { ids: string[] };
+    expect(firstBatch.ids.length).toBe(100);
+    expect(secondBatch.ids.length).toBe(50);
+    expect(result.deleted).toBe(150);
+  });
+
+  it("translates per-id errors[] into Error[] and keeps erred entries in pathIndex", async () => {
+    const { volume } = makeVolumeForBulk(
+      [
+        {
+          memories: [
+            { id: "id1", filepath: "/n/a.md" },
+            { id: "id2", filepath: "/n/b.md" },
+          ],
+          pagination: { currentPage: 1, totalPages: 1, totalItems: 2 },
+        },
+      ],
+      {
+        deletedCount: 1,
+        success: false,
+        errors: [{ id: "id2", error: "still processing" }],
+      },
+    );
+    volume.pathIndex.insert("/n/a.md", "id1");
+    volume.pathIndex.insert("/n/b.md", "id2");
+    const result = await volume.removeByPrefix("/n/");
+    expect(result.deleted).toBe(1);
+    expect(result.errors.length).toBe(1);
+    expect(result.errors[0]?.message).toContain("id2");
+    expect(volume.pathIndex.resolve("/n/a.md")).toBeNull();
+    expect(volume.pathIndex.resolve("/n/b.md")).toBe("id2");
+  });
+});
