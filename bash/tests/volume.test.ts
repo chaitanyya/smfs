@@ -556,3 +556,50 @@ describe("SupermemoryVolume.removeByPrefix", () => {
     expect(volume.pathIndex.resolve("/n/b.md")).toBe("id2");
   });
 });
+
+// moveDoc is implemented as get+add+remove because the Supermemory wire
+// silently ignores filepath on PATCH (verified against production). docId
+// changes across a move. Tests cover the branch logic; the orchestration is
+// validated against production in .scratch/validate-b2.8.ts.
+describe("SupermemoryVolume.moveDoc", () => {
+  function makeMoveClient() {
+    const client = {
+      documents: {
+        add: vi.fn().mockResolvedValue({ id: "new-doc", status: "done" }),
+        update: vi.fn(),
+        get: vi.fn().mockResolvedValue({ id: "old-doc", content: "body", status: "done" }),
+        delete: vi.fn().mockResolvedValue(undefined),
+        deleteBulk: vi.fn(),
+      },
+    } as unknown as Supermemory;
+    return client;
+  }
+
+  it("throws ENOENT when source path is not in pathIndex", async () => {
+    const volume = new SupermemoryVolume(makeMoveClient(), "tag");
+    await expect(volume.moveDoc("/missing.md", "/dst.md")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("throws EEXIST when destination is already in pathIndex", async () => {
+    const volume = new SupermemoryVolume(makeMoveClient(), "tag");
+    volume.pathIndex.insert("/src.md", "doc-src");
+    volume.pathIndex.insert("/dst.md", "doc-dst");
+    await expect(volume.moveDoc("/src.md", "/dst.md")).rejects.toMatchObject({
+      code: "EEXIST",
+    });
+  });
+
+  it("on success: source removed, destination added with new docId, cache reflects move", async () => {
+    const client = makeMoveClient();
+    const volume = new SupermemoryVolume(client, "tag");
+    volume.pathIndex.insert("/old.md", "old-doc");
+    volume.cache.set("/old.md", "body", "done");
+    await volume.moveDoc("/old.md", "/new.md");
+    expect(volume.pathIndex.resolve("/old.md")).toBeNull();
+    expect(volume.pathIndex.resolve("/new.md")).toBe("new-doc");
+    expect(volume.cache.get("/old.md")).toBeNull();
+    expect(volume.cache.get("/new.md")?.content).toBe("body");
+  });
+});

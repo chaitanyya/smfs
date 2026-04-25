@@ -1,5 +1,5 @@
 import type Supermemory from "supermemory";
-import { ebusy, efbig, eio, enoent } from "./errors.js";
+import { ebusy, eexist, efbig, eio, enoent } from "./errors.js";
 import { PathIndex } from "./path-index.js";
 import { SessionCache, type SessionCacheOptions } from "./session-cache.js";
 
@@ -279,8 +279,18 @@ export class SupermemoryVolume {
     return { deleted, errors };
   }
 
-  async moveDoc(_from: string, _to: string): Promise<void> {
-    throw new Error("not implemented (B2)");
+  async moveDoc(from: string, to: string): Promise<void> {
+    if (!this.pathIndex.resolve(from)) throw enoent(from);
+    if (this.pathIndex.resolve(to)) throw eexist(to);
+
+    // The Supermemory API silently ignores `filepath` on PATCH (verified on the
+    // wire — POST applies it, PATCH does not). So move = read source + write
+    // destination + remove source. Side effect: docId changes.
+    const src = await this.getDoc(from);
+    if (!src) throw enoent(from);
+
+    await this.addDoc(to, src.content);
+    await this.removeDoc(from);
   }
 
   // --- listing & stat ---
