@@ -1,5 +1,6 @@
 import type Supermemory from "supermemory";
 import { describe, expect, it, vi } from "vitest";
+import { FsError } from "../src/errors.js";
 import { PathIndex } from "../src/path-index.js";
 import { SessionCache } from "../src/session-cache.js";
 import { SupermemoryVolume } from "../src/volume.js";
@@ -199,5 +200,149 @@ describe("SupermemoryVolume.addDoc / updateDoc", () => {
     const result = await volume.updateDoc("/known.md", "new content");
     expect(update).toHaveBeenCalledWith("doc-known", expect.any(Object));
     expect(result).toEqual({ id: "doc-known", status: "done" });
+  });
+});
+
+function makeVolumeWithGetMock(
+  getResp: unknown = { id: "doc-1", content: "hello", status: "done" },
+) {
+  const get = vi.fn().mockResolvedValue(getResp);
+  const client = {
+    documents: { add: vi.fn(), update: vi.fn(), get },
+  } as unknown as Supermemory;
+  const volume = new SupermemoryVolume(client, "test-tag");
+  return { volume, get };
+}
+
+describe("SupermemoryVolume.getDoc", () => {
+  it("returns null without calling SDK when path is not in pathIndex", async () => {
+    const { volume, get } = makeVolumeWithGetMock();
+    const result = await volume.getDoc("/never-added.md");
+    expect(result).toBeNull();
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("returns from cache without calling SDK when cache is populated", async () => {
+    const { volume, get } = makeVolumeWithGetMock();
+    volume.pathIndex.insert("/cached.md", "doc-c");
+    volume.cache.set("/cached.md", "cached-content", "done");
+    const result = await volume.getDoc("/cached.md");
+    expect(get).not.toHaveBeenCalled();
+    expect(result).toEqual({ id: "doc-c", content: "cached-content", status: "done" });
+  });
+
+  it("calls client.documents.get(docId) and returns { id, content, status } on cache miss", async () => {
+    const { volume, get } = makeVolumeWithGetMock({
+      id: "doc-x",
+      content: "fetched",
+      status: "done",
+    });
+    volume.pathIndex.insert("/a.md", "doc-x");
+    const result = await volume.getDoc("/a.md");
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(get).toHaveBeenCalledWith("doc-x");
+    expect(result).toEqual({ id: "doc-x", content: "fetched", status: "done" });
+  });
+
+  it("status 'done' passes through", async () => {
+    const { volume } = makeVolumeWithGetMock({ id: "d", content: "ok", status: "done" });
+    volume.pathIndex.insert("/a.md", "d");
+    const result = await volume.getDoc("/a.md");
+    expect(result?.status).toBe("done");
+  });
+
+  it.each([
+    ["queued"],
+    ["extracting"],
+    ["chunking"],
+    ["embedding"],
+    ["indexing"],
+    ["unknown"],
+    ["something-new-from-server"],
+  ])("normalizes server status %s → 'processing'", async (serverStatus) => {
+    const { volume } = makeVolumeWithGetMock({ id: "d", content: "x", status: serverStatus });
+    volume.pathIndex.insert("/a.md", "d");
+    const result = await volume.getDoc("/a.md");
+    expect(result?.status).toBe("processing");
+  });
+
+  it("status 'failed' with errorMessage rewrites content and populates errorReason", async () => {
+    const { volume } = makeVolumeWithGetMock({
+      id: "d",
+      content: "partial",
+      status: "failed",
+      errorMessage: "extraction timeout",
+    });
+    volume.pathIndex.insert("/a.md", "d");
+    const result = await volume.getDoc("/a.md");
+    expect(result?.status).toBe("failed");
+    expect(result?.errorReason).toBe("extraction timeout");
+    expect(result?.content).toBe(
+      "[supermemory.error: processing-failed]\n\nThis document could not be processed.\nReason: extraction timeout",
+    );
+  });
+
+  it("status 'failed' with no error fields uses '(unknown)' as reason", async () => {
+    const { volume } = makeVolumeWithGetMock({ id: "d", content: "", status: "failed" });
+    volume.pathIndex.insert("/a.md", "d");
+    const result = await volume.getDoc("/a.md");
+    expect(result?.errorReason).toBe("(unknown)");
+    expect(result?.content).toMatch(/Reason: \(unknown\)$/);
+  });
+
+  it("populates cache after successful fetch with normalized status", async () => {
+    const { volume } = makeVolumeWithGetMock({ id: "d", content: "fresh", status: "queued" });
+    volume.pathIndex.insert("/a.md", "d");
+    await volume.getDoc("/a.md");
+    const cached = volume.cache.get("/a.md");
+    expect(cached?.content).toBe("fresh");
+    expect(cached?.status).toBe("processing");
+  });
+
+  it("caches the formatted blurb for failed docs (subsequent reads stay structured)", async () => {
+    const { volume, get } = makeVolumeWithGetMock({
+      id: "d",
+      content: "raw",
+      status: "failed",
+      errorMessage: "bad mime",
+    });
+    volume.pathIndex.insert("/a.md", "d");
+    await volume.getDoc("/a.md");
+    const second = await volume.getDoc("/a.md");
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(second?.content).toContain("[supermemory.error: processing-failed]");
+    expect(second?.content).toContain("Reason: bad mime");
+  });
+
+  it("returns null and evicts pathIndex when SDK throws 404", async () => {
+    const get = vi.fn().mockRejectedValue(Object.assign(new Error("not found"), { status: 404 }));
+    const client = {
+      documents: { add: vi.fn(), update: vi.fn(), get },
+    } as unknown as Supermemory;
+    const volume = new SupermemoryVolume(client, "tag");
+    volume.pathIndex.insert("/stale.md", "doc-gone");
+    const result = await volume.getDoc("/stale.md");
+    expect(result).toBeNull();
+    expect(volume.pathIndex.resolve("/stale.md")).toBeNull();
+  });
+
+  it("throws eio when SDK throws non-404", async () => {
+    const get = vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error("network down"), { status: 500 }));
+    const client = {
+      documents: { add: vi.fn(), update: vi.fn(), get },
+    } as unknown as Supermemory;
+    const volume = new SupermemoryVolume(client, "tag");
+    volume.pathIndex.insert("/a.md", "d");
+    await expect(volume.getDoc("/a.md")).rejects.toMatchObject({ code: "EIO" });
+    await expect(volume.getDoc("/a.md")).rejects.toBeInstanceOf(FsError);
+  });
+
+  it("treats null SDK content as empty string", async () => {
+    const { volume } = makeVolumeWithGetMock({ id: "d", content: null, status: "done" });
+    volume.pathIndex.insert("/a.md", "d");
+    const result = await volume.getDoc("/a.md");
+    expect(result?.content).toBe("");
   });
 });

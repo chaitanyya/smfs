@@ -158,8 +158,49 @@ export class SupermemoryVolume {
     return this.addDoc(path, content);
   }
 
-  async getDoc(_path: string): Promise<DocResult | null> {
-    throw new Error("not implemented (B2)");
+  async getDoc(path: string): Promise<DocResult | null> {
+    const docId = this.pathIndex.resolve(path);
+    if (!docId) return null;
+
+    const cached = this.cache.get(path);
+    if (cached) {
+      return { id: docId, content: cached.content, status: cached.status };
+    }
+
+    let resp: unknown;
+    try {
+      resp = await this.client.documents.get(docId);
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status === 404) {
+        this.pathIndex.remove(path);
+        this.cache.delete(path);
+        return null;
+      }
+      throw eio(`getDoc(${path}): ${(err as Error).message}`);
+    }
+
+    const r = resp as Record<string, unknown>;
+    const serverStatus = typeof r.status === "string" ? r.status : "unknown";
+    const status = normalizeStatus(serverStatus);
+    const rawContent = typeof r.content === "string" ? r.content : "";
+
+    let content: string = rawContent;
+    let errorReason: string | undefined;
+    if (status === "failed") {
+      errorReason =
+        (typeof r.errorMessage === "string" && r.errorMessage) ||
+        (typeof r.errorReason === "string" && r.errorReason) ||
+        (typeof r.error === "string" && r.error) ||
+        (typeof r.failureReason === "string" && r.failureReason) ||
+        "(unknown)";
+      content = `[supermemory.error: processing-failed]\n\nThis document could not be processed.\nReason: ${errorReason}`;
+    }
+
+    this.cache.set(path, content, status);
+    return errorReason
+      ? { id: docId, content, status, errorReason }
+      : { id: docId, content, status };
   }
 
   async removeDoc(_path: string): Promise<void> {
