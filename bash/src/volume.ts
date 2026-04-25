@@ -1,3 +1,7 @@
+import type Supermemory from "supermemory";
+import { PathIndex } from "./path-index.js";
+import { SessionCache, type SessionCacheOptions } from "./session-cache.js";
+
 // Three states the agent actually acts on. Volume maps any non-done/non-failed
 // server status to "processing" so SDK additions don't break our types.
 export type DocStatus = "done" | "failed" | "processing";
@@ -68,15 +72,30 @@ export interface SearchParams {
   filepath?: string;
 }
 
+export interface SupermemoryVolumeOptions {
+  pathIndex?: PathIndex;
+  cache?: SessionCache;
+  cacheOptions?: SessionCacheOptions;
+}
+
 /**
- * Stub implementation. Every method throws a marker tagged to B2, the
- * milestone that fills in real bodies against the Supermemory SDK.
- *
- * This class is the contract `SupermemoryFs` (B3) will delegate to. Locking
- * down these signatures now means B3/B4/B5 don't have to refactor when B2
- * lands the real implementation.
+ * The domain layer between SupermemoryFs and the Supermemory SDK. Owns the
+ * PathIndex (filepath ↔ docId) and SessionCache (TTL + LRU). Methods are still
+ * stubbed in B2.4; B2.5+ replaces each with a real SDK-backed implementation.
  */
 export class SupermemoryVolume {
+  readonly client: Supermemory;
+  readonly containerTag: string;
+  readonly pathIndex: PathIndex;
+  readonly cache: SessionCache;
+
+  constructor(client: Supermemory, containerTag: string, options: SupermemoryVolumeOptions = {}) {
+    this.client = client;
+    this.containerTag = containerTag;
+    this.pathIndex = options.pathIndex ?? new PathIndex();
+    this.cache = options.cache ?? new SessionCache(options.cacheOptions);
+  }
+
   // --- document CRUD ---
 
   async addDoc(

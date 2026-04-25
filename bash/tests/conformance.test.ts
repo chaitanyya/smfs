@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SupermemoryFs, SupermemoryVolume } from "../src/index.js";
+import { SupermemoryFs } from "../src/index.js";
 
 // Conformance harness — verifies every stub method throws its expected
 // `not implemented (B<n>)` marker. As real implementations land in B2-B5,
@@ -92,70 +92,6 @@ describe("SupermemoryFs — conformance (stubs)", () => {
   describe("getAllPaths throws B5", () => {
     it("getAllPaths", () => {
       expect(() => new SupermemoryFs().getAllPaths()).toThrow(/not implemented \(B5\)/);
-    });
-  });
-});
-
-describe("SupermemoryVolume — conformance (stubs)", () => {
-  describe("all methods throw B2", () => {
-    it("addDoc", async () => {
-      await expect(new SupermemoryVolume().addDoc("/t", "x")).rejects.toThrow(
-        /not implemented \(B2\)/,
-      );
-    });
-    it("updateDoc", async () => {
-      await expect(new SupermemoryVolume().updateDoc("/t", "x")).rejects.toThrow(
-        /not implemented \(B2\)/,
-      );
-    });
-    it("getDoc", async () => {
-      await expect(new SupermemoryVolume().getDoc("/t")).rejects.toThrow(/not implemented \(B2\)/);
-    });
-    it("removeDoc", async () => {
-      await expect(new SupermemoryVolume().removeDoc("/t")).rejects.toThrow(
-        /not implemented \(B2\)/,
-      );
-    });
-    it("removeByPrefix", async () => {
-      await expect(new SupermemoryVolume().removeByPrefix("/d/")).rejects.toThrow(
-        /not implemented \(B2\)/,
-      );
-    });
-    it("moveDoc", async () => {
-      await expect(new SupermemoryVolume().moveDoc("/a", "/b")).rejects.toThrow(
-        /not implemented \(B2\)/,
-      );
-    });
-    it("listByPrefix", async () => {
-      await expect(new SupermemoryVolume().listByPrefix("/d/")).rejects.toThrow(
-        /not implemented \(B2\)/,
-      );
-    });
-    it("listAllPaths", async () => {
-      await expect(new SupermemoryVolume().listAllPaths()).rejects.toThrow(
-        /not implemented \(B2\)/,
-      );
-    });
-    it("cachedAllPaths", () => {
-      expect(() => new SupermemoryVolume().cachedAllPaths()).toThrow(/not implemented \(B2\)/);
-    });
-    it("statDoc", async () => {
-      await expect(new SupermemoryVolume().statDoc("/t")).rejects.toThrow(/not implemented \(B2\)/);
-    });
-    it("markSyntheticDir", () => {
-      expect(() => new SupermemoryVolume().markSyntheticDir("/d")).toThrow(
-        /not implemented \(B2\)/,
-      );
-    });
-    it("search", async () => {
-      await expect(new SupermemoryVolume().search({ q: "test" })).rejects.toThrow(
-        /not implemented \(B2\)/,
-      );
-    });
-    it("configureMemoryPaths", async () => {
-      await expect(new SupermemoryVolume().configureMemoryPaths(["/p/"])).rejects.toThrow(
-        /not implemented \(B2\)/,
-      );
     });
   });
 });
