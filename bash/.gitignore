@@ -6,3 +6,8 @@ dist/
 .env.*.local
 coverage/
 .vitest-cache/
+
+
+.scratch/
+_*.ts
+
