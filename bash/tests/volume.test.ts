@@ -691,3 +691,26 @@ describe("SupermemoryVolume.listByPrefix / listAllPaths / statDoc", () => {
     expect(missing).toBeNull();
   });
 });
+
+describe("SupermemoryVolume.configureMemoryPaths", () => {
+  it("skips PATCH when called twice with identical paths; re-issues for different paths", async () => {
+    const patch = vi.fn().mockResolvedValue(undefined);
+    const client = {
+      documents: {
+        add: vi.fn(),
+        update: vi.fn(),
+        get: vi.fn(),
+        delete: vi.fn(),
+        deleteBulk: vi.fn(),
+        list: vi.fn(),
+      },
+      patch,
+    } as unknown as Supermemory;
+    const volume = new SupermemoryVolume(client, "my-tag");
+    await volume.configureMemoryPaths(["/notes/", "/journal/"]);
+    await volume.configureMemoryPaths(["/notes/", "/journal/"]);
+    expect(patch).toHaveBeenCalledTimes(1);
+    await volume.configureMemoryPaths(["/different/"]);
+    expect(patch).toHaveBeenCalledTimes(2);
+  });
+});

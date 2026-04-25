@@ -96,6 +96,7 @@ export class SupermemoryVolume {
   readonly pathIndex: PathIndex;
   readonly cache: SessionCache;
   private allPathsCache: { paths: string[]; at: number } | null = null;
+  private lastConfiguredPaths: string | null = null;
   private static readonly ALL_PATHS_TTL_MS = 60_000;
   private static readonly ALL_PATHS_HARD_CAP = 5000;
 
@@ -418,7 +419,17 @@ export class SupermemoryVolume {
 
   // --- container-tag config ---
 
-  async configureMemoryPaths(_paths: string[]): Promise<void> {
-    throw new Error("not implemented (B2)");
+  async configureMemoryPaths(paths: string[]): Promise<void> {
+    const key = JSON.stringify(paths);
+    if (this.lastConfiguredPaths === key) return;
+
+    try {
+      await this.client.patch(`/v3/container-tags/${encodeURIComponent(this.containerTag)}`, {
+        body: { memoryFilesystemPaths: paths },
+      });
+    } catch (err) {
+      throw eio(`configureMemoryPaths: ${(err as Error).message}`);
+    }
+    this.lastConfiguredPaths = key;
   }
 }
