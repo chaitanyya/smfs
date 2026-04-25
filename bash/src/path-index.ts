@@ -1,16 +1,26 @@
 export class PathIndex {
   private files: Map<string, string> = new Map();
+  private byDocId: Map<string, string> = new Map();
   private syntheticDirs: Set<string> = new Set();
 
   insert(path: string, docId: string): void {
+    const existing = this.files.get(path);
+    if (existing && existing !== docId) this.byDocId.delete(existing);
     this.files.set(path, docId);
+    this.byDocId.set(docId, path);
   }
 
   resolve(path: string): string | null {
     return this.files.get(path) ?? null;
   }
 
+  findPath(docId: string): string | null {
+    return this.byDocId.get(docId) ?? null;
+  }
+
   remove(path: string): void {
+    const docId = this.files.get(path);
+    if (docId !== undefined) this.byDocId.delete(docId);
     this.files.delete(path);
   }
 

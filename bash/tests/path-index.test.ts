@@ -1,6 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { PathIndex } from "../src/path-index.js";
 
+describe("PathIndex.findPath (reverse lookup)", () => {
+  it("returns the path for a docId after insert; null after remove", () => {
+    const idx = new PathIndex();
+    idx.insert("/a.md", "doc-a");
+    idx.insert("/b.md", "doc-b");
+    expect(idx.findPath("doc-a")).toBe("/a.md");
+    expect(idx.findPath("doc-b")).toBe("/b.md");
+    expect(idx.findPath("doc-missing")).toBeNull();
+    idx.remove("/a.md");
+    expect(idx.findPath("doc-a")).toBeNull();
+  });
+
+  it("re-inserting the same path with a different docId clears the old reverse mapping", () => {
+    const idx = new PathIndex();
+    idx.insert("/a.md", "doc-old");
+    idx.insert("/a.md", "doc-new");
+    expect(idx.findPath("doc-old")).toBeNull();
+    expect(idx.findPath("doc-new")).toBe("/a.md");
+  });
+});
+
 describe("PathIndex", () => {
   it("resolve on empty index returns null", () => {
     const idx = new PathIndex();

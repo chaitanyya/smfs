@@ -413,8 +413,46 @@ export class SupermemoryVolume {
 
   // --- search ---
 
-  async search(_params: SearchParams): Promise<SearchResp> {
-    throw new Error("not implemented (B2)");
+  async search(params: SearchParams): Promise<SearchResp> {
+    let resp: unknown;
+    try {
+      resp = await this.client.search.execute({
+        q: params.q,
+        containerTags: [this.containerTag],
+        onlyMatchingChunks: true,
+        limit: 50,
+      });
+    } catch (err) {
+      throw eio(`search(${params.q}): ${(err as Error).message}`);
+    }
+
+    const out: SearchResult[] = [];
+    const results = (resp as { results?: unknown[] }).results ?? [];
+    for (const r of results) {
+      const rec = r as {
+        documentId?: string;
+        score?: number;
+        chunks?: Array<{ content: string; score?: number }>;
+      };
+      const docId = rec.documentId;
+      if (!docId) continue;
+      const filepath = this.pathIndex.findPath(docId) ?? undefined;
+      if (params.filepath && filepath !== params.filepath) continue;
+      const chunks = rec.chunks ?? [];
+      if (chunks.length === 0) {
+        out.push({ id: docId, filepath, similarity: rec.score ?? 0 });
+        continue;
+      }
+      for (const c of chunks) {
+        out.push({
+          id: docId,
+          filepath,
+          chunk: c.content,
+          similarity: c.score ?? rec.score ?? 0,
+        });
+      }
+    }
+    return { results: out };
   }
 
   // --- container-tag config ---
