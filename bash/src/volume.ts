@@ -87,8 +87,7 @@ export interface SupermemoryVolumeOptions {
 
 /**
  * The domain layer between SupermemoryFs and the Supermemory SDK. Owns the
- * PathIndex (filepath ↔ docId) and SessionCache (TTL + LRU). Methods are still
- * stubbed in B2.4; B2.5+ replaces each with a real SDK-backed implementation.
+ * PathIndex (filepath ↔ docId) and SessionCache (TTL + LRU).
  */
 export class SupermemoryVolume {
   readonly client: Supermemory;
