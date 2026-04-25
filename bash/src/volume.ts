@@ -95,12 +95,31 @@ export class SupermemoryVolume {
   readonly containerTag: string;
   readonly pathIndex: PathIndex;
   readonly cache: SessionCache;
+  private allPathsCache: { paths: string[]; at: number } | null = null;
+  private static readonly ALL_PATHS_TTL_MS = 60_000;
+  private static readonly ALL_PATHS_HARD_CAP = 5000;
 
   constructor(client: Supermemory, containerTag: string, options: SupermemoryVolumeOptions = {}) {
     this.client = client;
     this.containerTag = containerTag;
     this.pathIndex = options.pathIndex ?? new PathIndex();
     this.cache = options.cache ?? new SessionCache(options.cacheOptions);
+  }
+
+  private async *iterContainer(includeContent: boolean): AsyncIterable<unknown> {
+    let page = 1;
+    while (true) {
+      const resp = await this.client.documents.list({
+        containerTags: [this.containerTag],
+        limit: 100,
+        page,
+        includeContent,
+      });
+      for (const m of resp.memories ?? []) yield m;
+      const total = resp.pagination?.totalPages ?? 1;
+      if (page >= total) break;
+      page++;
+    }
   }
 
   // --- document CRUD ---
@@ -226,22 +245,11 @@ export class SupermemoryVolume {
 
   async removeByPrefix(prefix: string): Promise<RemoveByPrefixResult> {
     const matches: Array<{ id: string; filepath: string }> = [];
-    let page = 1;
-    while (true) {
-      const resp = await this.client.documents.list({
-        containerTags: [this.containerTag],
-        limit: 100,
-        page,
-      });
-      for (const m of resp.memories ?? []) {
-        const fp = (m as unknown as { filepath?: string }).filepath;
-        if (typeof fp === "string" && fp.startsWith(prefix)) {
-          matches.push({ id: m.id, filepath: fp });
-        }
+    for await (const m of this.iterContainer(false)) {
+      const r = m as { id: string; filepath?: string };
+      if (typeof r.filepath === "string" && r.filepath.startsWith(prefix)) {
+        matches.push({ id: r.id, filepath: r.filepath });
       }
-      const total = resp.pagination?.totalPages ?? 1;
-      if (page >= total) break;
-      page++;
     }
 
     if (matches.length === 0) return { deleted: 0, errors: [] };
@@ -295,24 +303,111 @@ export class SupermemoryVolume {
 
   // --- listing & stat ---
 
-  async listByPrefix(_prefix: string, _opts?: ListByPrefixOpts): Promise<DocSummary[]> {
-    throw new Error("not implemented (B2)");
+  async listByPrefix(prefix: string, opts: ListByPrefixOpts = {}): Promise<DocSummary[]> {
+    const out: DocSummary[] = [];
+    const limit = opts.limit ?? Infinity;
+    for await (const m of this.iterContainer(opts.withContent ?? false)) {
+      const r = m as {
+        id: string;
+        filepath?: string;
+        status?: string;
+        content?: string;
+        updatedAt?: string;
+      };
+      if (typeof r.filepath !== "string") continue;
+      const matches = opts.exact ? r.filepath === prefix : r.filepath.startsWith(prefix);
+      if (!matches) continue;
+      const status = normalizeStatus(typeof r.status === "string" ? r.status : "unknown");
+      const content = typeof r.content === "string" ? r.content : undefined;
+      const summary: DocSummary = {
+        id: r.id,
+        filepath: r.filepath,
+        status,
+        size: content?.length ?? 0,
+        mtime: r.updatedAt ? new Date(r.updatedAt) : new Date(0),
+        ...(content !== undefined ? { content } : {}),
+      };
+      out.push(summary);
+      this.pathIndex.insert(r.filepath, r.id);
+      if (opts.withContent && content !== undefined) {
+        this.cache.set(r.filepath, content, status);
+      }
+      if (out.length >= limit) break;
+    }
+    return out;
   }
 
   async listAllPaths(): Promise<string[]> {
-    throw new Error("not implemented (B2)");
+    const paths: string[] = [];
+    for await (const m of this.iterContainer(false)) {
+      const r = m as { id: string; filepath?: string };
+      if (typeof r.filepath !== "string") continue;
+      paths.push(r.filepath);
+      this.pathIndex.insert(r.filepath, r.id);
+      if (paths.length > SupermemoryVolume.ALL_PATHS_HARD_CAP) {
+        throw eio(
+          `listAllPaths exceeded ${SupermemoryVolume.ALL_PATHS_HARD_CAP} docs in container '${this.containerTag}'`,
+        );
+      }
+    }
+    paths.sort();
+    this.allPathsCache = { paths, at: Date.now() };
+    return paths;
   }
 
   cachedAllPaths(): string[] {
-    throw new Error("not implemented (B2)");
+    if (!this.allPathsCache) return [];
+    if (Date.now() - this.allPathsCache.at > SupermemoryVolume.ALL_PATHS_TTL_MS) return [];
+    return this.allPathsCache.paths;
   }
 
-  async statDoc(_path: string): Promise<DocStat | null> {
-    throw new Error("not implemented (B2)");
+  async statDoc(path: string): Promise<DocStat | null> {
+    if (this.pathIndex.isDirectory(path) && !this.pathIndex.isFile(path)) {
+      return { isFile: false, isDirectory: true, size: 0, mtime: new Date(0) };
+    }
+    const docId = this.pathIndex.resolve(path);
+    if (!docId) return null;
+
+    const cached = this.cache.get(path);
+    if (cached) {
+      return {
+        id: docId,
+        isFile: true,
+        isDirectory: false,
+        size:
+          typeof cached.content === "string" ? cached.content.length : cached.content.byteLength,
+        mtime: new Date(0),
+        status: cached.status,
+      };
+    }
+
+    let resp: unknown;
+    try {
+      resp = await this.client.documents.get(docId);
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status === 404) {
+        this.pathIndex.remove(path);
+        this.cache.delete(path);
+        return null;
+      }
+      throw eio(`statDoc(${path}): ${(err as Error).message}`);
+    }
+
+    const r = resp as { status?: string; content?: string; updatedAt?: string };
+    const status = normalizeStatus(typeof r.status === "string" ? r.status : "unknown");
+    return {
+      id: docId,
+      isFile: true,
+      isDirectory: false,
+      size: typeof r.content === "string" ? r.content.length : 0,
+      mtime: r.updatedAt ? new Date(r.updatedAt) : new Date(0),
+      status,
+    };
   }
 
-  markSyntheticDir(_path: string): void {
-    throw new Error("not implemented (B2)");
+  markSyntheticDir(path: string): void {
+    this.pathIndex.markSyntheticDir(path);
   }
 
   // --- search ---

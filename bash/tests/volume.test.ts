@@ -603,3 +603,91 @@ describe("SupermemoryVolume.moveDoc", () => {
     expect(volume.cache.get("/new.md")?.content).toBe("body");
   });
 });
+
+function makeListClient(
+  pages: Array<{
+    memories: Array<Record<string, unknown>>;
+    pagination: { currentPage: number; totalPages: number; totalItems: number };
+  }>,
+) {
+  const list = vi.fn();
+  for (const p of pages) list.mockResolvedValueOnce(p);
+  const client = {
+    documents: {
+      add: vi.fn(),
+      update: vi.fn(),
+      get: vi.fn(),
+      delete: vi.fn(),
+      deleteBulk: vi.fn(),
+      list,
+    },
+  } as unknown as Supermemory;
+  return { client, list };
+}
+
+describe("SupermemoryVolume.listByPrefix / listAllPaths / statDoc", () => {
+  it("listByPrefix filters out memories without filepath AND outside prefix; honors limit", async () => {
+    const { client } = makeListClient([
+      {
+        memories: [
+          { id: "1", filepath: "/notes/a.md", status: "done", updatedAt: "2026-01-01" },
+          { id: "2" }, // no filepath
+          { id: "3", filepath: "/other/b.md", status: "done", updatedAt: "2026-01-01" },
+          { id: "4", filepath: "/notes/c.md", status: "queued", updatedAt: "2026-01-01" },
+          { id: "5", filepath: "/notes/d.md", status: "done", updatedAt: "2026-01-01" },
+        ],
+        pagination: { currentPage: 1, totalPages: 1, totalItems: 5 },
+      },
+    ]);
+    const volume = new SupermemoryVolume(client, "tag");
+    const result = await volume.listByPrefix("/notes/", { limit: 2 });
+    expect(result.length).toBe(2);
+    expect(result.map((s) => s.filepath)).toEqual(["/notes/a.md", "/notes/c.md"]);
+    expect(result[1]?.status).toBe("processing");
+  });
+
+  it("listAllPaths throws EIO when container exceeds 5000 docs", async () => {
+    // Simulate >5000 results across pages.
+    const pages = [];
+    for (let p = 1; p <= 51; p++) {
+      const memories = Array.from({ length: 100 }, (_, i) => ({
+        id: `id-${p}-${i}`,
+        filepath: `/p${p}/${i}.md`,
+      }));
+      pages.push({
+        memories,
+        pagination: { currentPage: p, totalPages: 51, totalItems: 5100 },
+      });
+    }
+    const { client } = makeListClient(pages);
+    const volume = new SupermemoryVolume(client, "tag");
+    await expect(volume.listAllPaths()).rejects.toMatchObject({ code: "EIO" });
+  });
+
+  it("cachedAllPaths is empty before listAllPaths and populated after", async () => {
+    const { client } = makeListClient([
+      {
+        memories: [
+          { id: "1", filepath: "/a.md" },
+          { id: "2", filepath: "/b.md" },
+        ],
+        pagination: { currentPage: 1, totalPages: 1, totalItems: 2 },
+      },
+    ]);
+    const volume = new SupermemoryVolume(client, "tag");
+    expect(volume.cachedAllPaths()).toEqual([]);
+    await volume.listAllPaths();
+    expect(volume.cachedAllPaths()).toEqual(["/a.md", "/b.md"]);
+  });
+
+  it("statDoc returns isDirectory:true for synthetic dirs and null for unknown paths", async () => {
+    const { client } = makeListClient([]);
+    const volume = new SupermemoryVolume(client, "tag");
+    volume.markSyntheticDir("/empty");
+    const dir = await volume.statDoc("/empty");
+    expect(dir?.isDirectory).toBe(true);
+    expect(dir?.isFile).toBe(false);
+    const missing = await volume.statDoc("/never.md");
+    expect(missing).toBeNull();
+  });
+});
