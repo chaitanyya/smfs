@@ -132,6 +132,8 @@ pub async fn run(cfg: DaemonConfig) -> Result<()> {
 
     let fs = Arc::new(SupermemoryFs::with_api(db, api));
 
+    fs.warm_profile().await;
+
     // Initial pull is a pull-side op — gated by --no-sync.
     if !cfg.no_sync {
         match smfs_core::sync::SyncEngine::initial_pull(&fs).await {

@@ -32,6 +32,7 @@ use crate::vfs::types::{DirEntry, FileAttr, FilesystemStats, SetAttr, TimeOrNow,
 pub struct SupermemoryFs {
     db: Arc<Db>,
     api: Option<Arc<crate::api::ApiClient>>,
+    profile_file: Option<Arc<ProfileFile>>,
     dentry_cache: Mutex<LruCache<(u64, String), u64>>,
 }
 
@@ -41,16 +42,25 @@ impl SupermemoryFs {
         Self {
             db,
             api: None,
+            profile_file: None,
             dentry_cache: Mutex::new(LruCache::new(NonZeroUsize::new(DENTRY_CACHE_MAX).unwrap())),
         }
     }
 
     /// Create a `SupermemoryFs` with an API client for cloud sync.
     pub fn with_api(db: Arc<Db>, api: Arc<crate::api::ApiClient>) -> Self {
+        let profile_file = Arc::new(ProfileFile::new(api.clone()));
         Self {
             db,
             api: Some(api),
+            profile_file: Some(profile_file),
             dentry_cache: Mutex::new(LruCache::new(NonZeroUsize::new(DENTRY_CACHE_MAX).unwrap())),
+        }
+    }
+
+    pub async fn warm_profile(&self) {
+        if let Some(pf) = &self.profile_file {
+            pf.warm().await;
         }
     }
 
@@ -939,8 +949,10 @@ impl FileSystem for SupermemoryFs {
         validate_name(name)?;
 
         // Virtual profile.md at root.
-        if parent_ino == ROOT_INO && name == PROFILE_NAME && self.api.is_some() {
-            return Ok(Some(ProfileFile::profile_attr()));
+        if parent_ino == ROOT_INO && name == PROFILE_NAME {
+            if let Some(pf) = &self.profile_file {
+                return Ok(Some(pf.profile_attr()));
+            }
         }
 
         // All DB work in a sync block — conn must be dropped before any .await.
@@ -1046,8 +1058,10 @@ impl FileSystem for SupermemoryFs {
     }
 
     async fn getattr(&self, ino: u64) -> VfsResult<Option<FileAttr>> {
-        if ino == PROFILE_INO && self.api.is_some() {
-            return Ok(Some(ProfileFile::profile_attr()));
+        if ino == PROFILE_INO {
+            if let Some(pf) = &self.profile_file {
+                return Ok(Some(pf.profile_attr()));
+            }
         }
         let conn = self.db.conn.lock();
         let attr = conn
@@ -1187,14 +1201,13 @@ impl FileSystem for SupermemoryFs {
         }; // conn dropped here
 
         let append_profile = |mut entries: Vec<DirEntry>| -> Vec<DirEntry> {
-            if ino == ROOT_INO
-                && self.api.is_some()
-                && !entries.iter().any(|e| e.name == PROFILE_NAME)
-            {
-                entries.push(DirEntry {
-                    name: PROFILE_NAME.to_string(),
-                    attr: ProfileFile::profile_attr(),
-                });
+            if ino == ROOT_INO && !entries.iter().any(|e| e.name == PROFILE_NAME) {
+                if let Some(pf) = &self.profile_file {
+                    entries.push(DirEntry {
+                        name: PROFILE_NAME.to_string(),
+                        attr: pf.profile_attr(),
+                    });
+                }
             }
             entries
         };
@@ -1362,8 +1375,8 @@ impl FileSystem for SupermemoryFs {
 
     async fn open(&self, ino: u64, _flags: i32) -> VfsResult<BoxedFile> {
         if ino == PROFILE_INO {
-            if let Some(ref api) = self.api {
-                return Ok(Arc::new(ProfileFile::new(api.clone())));
+            if let Some(pf) = &self.profile_file {
+                return Ok(pf.clone());
             }
             return Err(VfsError::NotFound);
         }

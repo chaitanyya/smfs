@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use parking_lot::Mutex;
+use parking_lot::RwLock;
 
 use crate::api::{ApiClient, ProfileResp};
 use crate::vfs::error::{VfsError, VfsResult};
@@ -13,49 +13,47 @@ use crate::vfs::types::{FileAttr, Timestamp};
 pub const PROFILE_INO: u64 = u64::MAX - 1;
 pub const PROFILE_NAME: &str = "profile.md";
 
-/// A virtual read-only file that shows the user's memory profile.
 #[derive(Debug)]
 pub struct ProfileFile {
     api: Arc<ApiClient>,
-    cached: Mutex<Option<Vec<u8>>>,
+    cache: RwLock<Option<Vec<u8>>>,
 }
 
 impl ProfileFile {
     pub fn new(api: Arc<ApiClient>) -> Self {
         Self {
             api,
-            cached: Mutex::new(None),
+            cache: RwLock::new(None),
         }
     }
 
-    async fn ensure_content(&self) -> VfsResult<Vec<u8>> {
-        {
-            let cached = self.cached.lock();
-            if let Some(data) = cached.as_ref() {
-                return Ok(data.clone());
+    pub async fn warm(&self) {
+        match self.api.get_profile().await {
+            Ok(resp) => {
+                *self.cache.write() = Some(format_profile(&resp).into_bytes());
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "profile warm failed; profile.md will be empty until next mount");
             }
         }
-
-        let content = match self.api.get_profile().await {
-            Ok(resp) => format_profile(&resp),
-            Err(e) => format!("# Memory Profile\n\n(Failed to load profile: {})\n", e),
-        };
-
-        let bytes = content.into_bytes();
-        *self.cached.lock() = Some(bytes.clone());
-        Ok(bytes)
     }
 
-    pub fn profile_attr() -> FileAttr {
+    pub fn profile_attr(&self) -> FileAttr {
         let now = Timestamp::now();
+        let size = self
+            .cache
+            .read()
+            .as_ref()
+            .map(|v| v.len() as u64)
+            .unwrap_or(0);
         FileAttr {
             ino: PROFILE_INO,
             mode: S_IFREG | 0o444,
             nlink: 1,
             uid: 0,
             gid: 0,
-            size: 65536, // placeholder — actual size determined on read
-            blocks: 128,
+            size,
+            blocks: size.div_ceil(512),
             atime: now,
             mtime: now,
             ctime: now,
@@ -68,7 +66,10 @@ impl ProfileFile {
 #[async_trait]
 impl crate::vfs::traits::File for ProfileFile {
     async fn read(&self, offset: u64, size: usize) -> VfsResult<Vec<u8>> {
-        let content = self.ensure_content().await?;
+        let cache = self.cache.read();
+        let Some(content) = cache.as_ref() else {
+            return Ok(Vec::new());
+        };
         let offset = offset as usize;
         if offset >= content.len() {
             return Ok(Vec::new());
@@ -94,11 +95,7 @@ impl crate::vfs::traits::File for ProfileFile {
     }
 
     async fn getattr(&self) -> VfsResult<FileAttr> {
-        let content = self.ensure_content().await?;
-        let mut attr = Self::profile_attr();
-        attr.size = content.len() as u64;
-        attr.blocks = attr.size.div_ceil(512);
-        Ok(attr)
+        Ok(self.profile_attr())
     }
 }
 
