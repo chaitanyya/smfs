@@ -106,20 +106,66 @@ export class SupermemoryVolume {
     this.cache = options.cache ?? new SessionCache(options.cacheOptions);
   }
 
-  private async *iterContainer(includeContent: boolean): AsyncIterable<unknown> {
+  private async *iterContainer(
+    opts: { filepath?: string; includeContent?: boolean } = {},
+  ): AsyncIterable<unknown> {
     let page = 1;
+    const includeContent = opts.includeContent ?? false;
     while (true) {
       const resp = await this.client.documents.list({
         containerTags: [this.containerTag],
         limit: 100,
         page,
         includeContent,
-      });
+        ...(opts.filepath !== undefined ? { filepath: opts.filepath } : {}),
+      } as unknown as Parameters<typeof this.client.documents.list>[0]);
       for (const m of resp.memories ?? []) yield m;
       const total = resp.pagination?.totalPages ?? 1;
       if (page >= total) break;
       page++;
     }
+  }
+
+  /**
+   * Resolve a path to a docId. PathIndex first; on miss, one targeted call to
+   * `documents.list` with exact-match filepath. Folds the result into PathIndex.
+   * Returns null only when both PathIndex and the wire say "no such doc".
+   */
+  private async lookupDocId(path: string): Promise<string | null> {
+    const cached = this.pathIndex.resolve(path);
+    if (cached) return cached;
+    try {
+      const resp = await this.client.documents.list({
+        containerTags: [this.containerTag],
+        limit: 1,
+        page: 1,
+        // @ts-expect-error filepath not in DocumentListParams typing yet (wire accepts it; exact match without trailing slash)
+        filepath: path,
+      });
+      const m = resp.memories?.[0];
+      if (!m) return null;
+      const fp = (m as unknown as { filepath?: string }).filepath;
+      if (typeof fp === "string" && fp === path) {
+        this.pathIndex.insert(path, m.id);
+        return m.id;
+      }
+      return null;
+    } catch (err) {
+      throw eio(`lookupDocId(${path}): ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Map a caller-supplied prefix to the value we should ship as `filepath` to
+   * the list endpoint. Empty string → omit (full container including
+   * filepath-less docs). Trailing slash → server prefix-LIKE. No trailing slash
+   * → exact match (per backend); we usually want LIKE so we add a slash unless
+   * caller explicitly asked for exact.
+   */
+  private filterArgFor(prefix: string, exact: boolean): string | undefined {
+    if (prefix === "") return undefined;
+    if (exact) return prefix;
+    return prefix.endsWith("/") ? prefix : `${prefix}/`;
   }
 
   // --- document CRUD ---
@@ -171,14 +217,14 @@ export class SupermemoryVolume {
     path: string,
     content: string | Uint8Array,
   ): Promise<{ id: string; status: DocStatus }> {
-    if (!this.pathIndex.resolve(path)) {
+    if (!(await this.lookupDocId(path))) {
       throw enoent(path);
     }
     return this.addDoc(path, content);
   }
 
   async getDoc(path: string): Promise<DocResult | null> {
-    const docId = this.pathIndex.resolve(path);
+    const docId = await this.lookupDocId(path);
     if (!docId) return null;
 
     const cached = this.cache.get(path);
@@ -223,7 +269,7 @@ export class SupermemoryVolume {
   }
 
   async removeDoc(path: string): Promise<void> {
-    const docId = this.pathIndex.resolve(path);
+    const docId = await this.lookupDocId(path);
     if (!docId) return;
 
     try {
@@ -245,7 +291,8 @@ export class SupermemoryVolume {
 
   async removeByPrefix(prefix: string): Promise<RemoveByPrefixResult> {
     const matches: Array<{ id: string; filepath: string }> = [];
-    for await (const m of this.iterContainer(false)) {
+    const filterArg = this.filterArgFor(prefix, false);
+    for await (const m of this.iterContainer({ filepath: filterArg, includeContent: false })) {
       const r = m as { id: string; filepath?: string };
       if (typeof r.filepath === "string" && r.filepath.startsWith(prefix)) {
         matches.push({ id: r.id, filepath: r.filepath });
@@ -288,8 +335,8 @@ export class SupermemoryVolume {
   }
 
   async moveDoc(from: string, to: string): Promise<void> {
-    if (!this.pathIndex.resolve(from)) throw enoent(from);
-    if (this.pathIndex.resolve(to)) throw eexist(to);
+    if (!(await this.lookupDocId(from))) throw enoent(from);
+    if (await this.lookupDocId(to)) throw eexist(to);
 
     // The Supermemory API silently ignores `filepath` on PATCH (verified on the
     // wire — POST applies it, PATCH does not). So move = read source + write
@@ -306,7 +353,11 @@ export class SupermemoryVolume {
   async listByPrefix(prefix: string, opts: ListByPrefixOpts = {}): Promise<DocSummary[]> {
     const out: DocSummary[] = [];
     const limit = opts.limit ?? Infinity;
-    for await (const m of this.iterContainer(opts.withContent ?? false)) {
+    const filterArg = this.filterArgFor(prefix, opts.exact ?? false);
+    for await (const m of this.iterContainer({
+      filepath: filterArg,
+      includeContent: opts.withContent ?? false,
+    })) {
       const r = m as {
         id: string;
         filepath?: string;
@@ -339,7 +390,7 @@ export class SupermemoryVolume {
 
   async listAllPaths(): Promise<string[]> {
     const paths: string[] = [];
-    for await (const m of this.iterContainer(false)) {
+    for await (const m of this.iterContainer({ includeContent: false })) {
       const r = m as { id: string; filepath?: string };
       if (typeof r.filepath !== "string") continue;
       paths.push(r.filepath);
@@ -365,7 +416,7 @@ export class SupermemoryVolume {
     if (this.pathIndex.isDirectory(path) && !this.pathIndex.isFile(path)) {
       return { isFile: false, isDirectory: true, size: 0, mtime: new Date(0) };
     }
-    const docId = this.pathIndex.resolve(path);
+    const docId = await this.lookupDocId(path);
     if (!docId) return null;
 
     const cached = this.cache.get(path);

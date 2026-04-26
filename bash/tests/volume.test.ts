@@ -88,17 +88,25 @@ describe("SupermemoryVolume constructor", () => {
   });
 });
 
+// Empty list response is the default for lookupDocId fallback in tests where the
+// path isn't pre-inserted into PathIndex. Tests that need a hit can override.
+const emptyListResp = {
+  memories: [],
+  pagination: { currentPage: 1, totalPages: 1, totalItems: 0 },
+};
+
 function makeVolumeWithMocks(
   addResp: { id: string; status: string } = { id: "doc-1", status: "queued" },
   updateResp: { id: string; status: string } = { id: "doc-1", status: "done" },
 ) {
   const add = vi.fn().mockResolvedValue(addResp);
   const update = vi.fn().mockResolvedValue(updateResp);
+  const list = vi.fn().mockResolvedValue(emptyListResp);
   const client = {
-    documents: { add, update },
+    documents: { add, update, list },
   } as unknown as Supermemory;
   const volume = new SupermemoryVolume(client, "test-tag");
-  return { volume, add, update };
+  return { volume, add, update, list };
 }
 
 describe("SupermemoryVolume.addDoc / updateDoc", () => {
@@ -207,11 +215,12 @@ function makeVolumeWithGetMock(
   getResp: unknown = { id: "doc-1", content: "hello", status: "done" },
 ) {
   const get = vi.fn().mockResolvedValue(getResp);
+  const list = vi.fn().mockResolvedValue(emptyListResp);
   const client = {
-    documents: { add: vi.fn(), update: vi.fn(), get },
+    documents: { add: vi.fn(), update: vi.fn(), get, list },
   } as unknown as Supermemory;
   const volume = new SupermemoryVolume(client, "test-tag");
-  return { volume, get };
+  return { volume, get, list };
 }
 
 describe("SupermemoryVolume.getDoc", () => {
@@ -355,8 +364,16 @@ function makeVolumeWithDeleteMock(opts: { rejectStatus?: number } = {}) {
           Object.assign(new Error(`http ${opts.rejectStatus}`), { status: opts.rejectStatus }),
         )
     : vi.fn().mockResolvedValue(undefined);
+  const list = vi.fn().mockResolvedValue(emptyListResp);
   const client = {
-    documents: { add: vi.fn(), update: vi.fn(), get: vi.fn(), delete: del, deleteBulk: vi.fn() },
+    documents: {
+      add: vi.fn(),
+      update: vi.fn(),
+      get: vi.fn(),
+      delete: del,
+      deleteBulk: vi.fn(),
+      list,
+    },
   } as unknown as Supermemory;
   const volume = new SupermemoryVolume(client, "tag");
   return { volume, del };
@@ -570,6 +587,7 @@ describe("SupermemoryVolume.moveDoc", () => {
         get: vi.fn().mockResolvedValue({ id: "old-doc", content: "body", status: "done" }),
         delete: vi.fn().mockResolvedValue(undefined),
         deleteBulk: vi.fn(),
+        list: vi.fn().mockResolvedValue(emptyListResp),
       },
     } as unknown as Supermemory;
     return client;
@@ -610,7 +628,7 @@ function makeListClient(
     pagination: { currentPage: number; totalPages: number; totalItems: number };
   }>,
 ) {
-  const list = vi.fn();
+  const list = vi.fn().mockResolvedValue(emptyListResp);
   for (const p of pages) list.mockResolvedValueOnce(p);
   const client = {
     documents: {
@@ -758,5 +776,66 @@ describe("SupermemoryVolume.configureMemoryPaths", () => {
     expect(patch).toHaveBeenCalledTimes(1);
     await volume.configureMemoryPaths(["/different/"]);
     expect(patch).toHaveBeenCalledTimes(2);
+  });
+});
+
+// B2.13: PathIndex is a cache, not authoritative. lookupDocId is the new
+// "single way" read methods learn a docId, with a wire fallback on cache miss.
+describe("SupermemoryVolume — wire fallback on PathIndex miss (B2.13)", () => {
+  it("getDoc on cold PathIndex falls back to documents.list and finds the doc", async () => {
+    const list = vi.fn().mockResolvedValue({
+      memories: [{ id: "doc-z", filepath: "/cold.md" }],
+      pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
+    });
+    const get = vi.fn().mockResolvedValue({ id: "doc-z", content: "found", status: "done" });
+    const client = {
+      documents: { add: vi.fn(), update: vi.fn(), get, list, delete: vi.fn(), deleteBulk: vi.fn() },
+    } as unknown as Supermemory;
+    const volume = new SupermemoryVolume(client, "tag");
+    const result = await volume.getDoc("/cold.md");
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(list.mock.calls[0]?.[0]).toMatchObject({
+      containerTags: ["tag"],
+      filepath: "/cold.md",
+      limit: 1,
+    });
+    expect(result?.content).toBe("found");
+    expect(volume.pathIndex.resolve("/cold.md")).toBe("doc-z");
+  });
+
+  it("getDoc returns null when both PathIndex and the wire come up empty", async () => {
+    const list = vi.fn().mockResolvedValue(emptyListResp);
+    const get = vi.fn();
+    const client = {
+      documents: { add: vi.fn(), update: vi.fn(), get, list, delete: vi.fn(), deleteBulk: vi.fn() },
+    } as unknown as Supermemory;
+    const volume = new SupermemoryVolume(client, "tag");
+    const result = await volume.getDoc("/never.md");
+    expect(result).toBeNull();
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("listByPrefix ships server-side filepath filter for prefix queries (not '/' or empty)", async () => {
+    const list = vi.fn().mockResolvedValue({
+      memories: [{ id: "1", filepath: "/notes/a.md", status: "done", updatedAt: "2026-01-01" }],
+      pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
+    });
+    const client = {
+      documents: { add: vi.fn(), update: vi.fn(), get: vi.fn(), delete: vi.fn(), deleteBulk: vi.fn(), list },
+    } as unknown as Supermemory;
+    const volume = new SupermemoryVolume(client, "tag");
+    await volume.listByPrefix("/notes/");
+    expect(list.mock.calls[0]?.[0]).toMatchObject({ filepath: "/notes/" });
+  });
+
+  it("listByPrefix omits filepath when prefix is empty (full container)", async () => {
+    const list = vi.fn().mockResolvedValue(emptyListResp);
+    const client = {
+      documents: { add: vi.fn(), update: vi.fn(), get: vi.fn(), delete: vi.fn(), deleteBulk: vi.fn(), list },
+    } as unknown as Supermemory;
+    const volume = new SupermemoryVolume(client, "tag");
+    await volume.listByPrefix("");
+    const body = list.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(body.filepath).toBeUndefined();
   });
 });
