@@ -1,4 +1,5 @@
 import type Supermemory from "supermemory";
+import type { SearchMemoriesParams } from "supermemory/resources/search";
 import { ebusy, eexist, efbig, eio, enoent } from "./errors.js";
 import { PathIndex } from "./path-index.js";
 import { SessionCache, type SessionCacheOptions } from "./session-cache.js";
@@ -520,14 +521,21 @@ export class SupermemoryVolume {
   // --- search ---
 
   async search(params: SearchParams): Promise<SearchResp> {
+    // Hybrid mode against POST /v4/search — matches smfs's `smfs grep`.
+    // Returns memory results (with `memory` field) and/or chunk results
+    // (with `chunk` field) depending on what scored highest.
     let resp: unknown;
     try {
-      resp = await this.client.search.execute({
+      const body: SearchMemoriesParams & { filepath?: string } = {
         q: params.q,
+        // @ts-expect-error containerTags deprecated in SDK types but the wire still accepts it
         containerTags: [this.containerTag],
-        onlyMatchingChunks: true,
+        searchMode: "hybrid",
+        include: { documents: true },
         limit: 50,
-      });
+      };
+      if (params.filepath !== undefined) body.filepath = params.filepath;
+      resp = await this.client.search.memories(body);
     } catch (err) {
       throw eio(`search(${params.q}): ${(err as Error).message}`);
     }
@@ -536,15 +544,21 @@ export class SupermemoryVolume {
     const results = (resp as { results?: unknown[] }).results ?? [];
     for (const r of results) {
       const rec = r as {
-        documentId?: string;
-        score?: number;
-        chunks?: Array<{ content: string; score?: number }>;
+        id: string;
+        memory?: string;
+        chunk?: string;
+        similarity?: number;
+        filepath?: string | null;
+        documents?: Array<{ id?: string; documentId?: string }>;
       };
-      const docId = rec.documentId;
-      if (!docId) continue;
-      const filepath = this.pathIndex.findPath(docId) ?? undefined;
+      const docId = rec.documents?.[0]?.id ?? rec.documents?.[0]?.documentId ?? rec.id;
+      // Source filepath: prefer the result-level field; fall back to PathIndex
+      // reverse-lookup against the source doc id (handles old containers where
+      // the wire returns null filepath but PathIndex knows it).
+      const filepath =
+        (typeof rec.filepath === "string" ? rec.filepath : undefined) ??
+        (docId ? (this.pathIndex.findPath(docId) ?? undefined) : undefined);
       if (params.filepath) {
-        // Match our list semantics: trailing slash = prefix; otherwise exact.
         const wantsPrefix = params.filepath.endsWith("/");
         if (!filepath) continue;
         if (wantsPrefix) {
@@ -553,19 +567,13 @@ export class SupermemoryVolume {
           continue;
         }
       }
-      const chunks = rec.chunks ?? [];
-      if (chunks.length === 0) {
-        out.push({ id: docId, filepath, similarity: rec.score ?? 0 });
-        continue;
-      }
-      for (const c of chunks) {
-        out.push({
-          id: docId,
-          filepath,
-          chunk: c.content,
-          similarity: c.score ?? rec.score ?? 0,
-        });
-      }
+      out.push({
+        id: docId,
+        filepath,
+        ...(rec.memory ? { memory: rec.memory } : {}),
+        ...(rec.chunk ? { chunk: rec.chunk } : {}),
+        similarity: rec.similarity ?? 0,
+      });
     }
     return { results: out };
   }

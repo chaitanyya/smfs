@@ -623,25 +623,27 @@ describe("SupermemoryVolume.listByPrefix / listAllPaths / statDoc", () => {
   });
 });
 
-describe("SupermemoryVolume.search", () => {
-  it("flattens nested chunks → one SearchResult per chunk; filters by filepath client-side", async () => {
-    const execute = vi.fn().mockResolvedValue({
+describe("SupermemoryVolume.search (hybrid mode)", () => {
+  it("maps /v4/search hybrid response to SearchResult with memory + chunk + filepath", async () => {
+    const memories = vi.fn().mockResolvedValue({
       results: [
         {
-          documentId: "doc-1",
-          score: 0.9,
-          chunks: [
-            { content: "first chunk", score: 0.95 },
-            { content: "second chunk", score: 0.8 },
-          ],
+          id: "mem-1",
+          memory: "fact about plants",
+          similarity: 0.9,
+          filepath: "/a.md",
+          documents: [{ id: "doc-1" }],
         },
         {
-          documentId: "doc-2",
-          score: 0.7,
-          chunks: [{ content: "other doc chunk", score: 0.7 }],
+          id: "chunk-1",
+          chunk: "raw chunk from doc-2",
+          similarity: 0.7,
+          filepath: null,
+          documents: [{ id: "doc-2" }],
         },
-        { documentId: "doc-no-chunks", score: 0.5, chunks: [] },
       ],
+      total: 2,
+      timing: 100,
     });
     const client = {
       documents: {
@@ -652,20 +654,60 @@ describe("SupermemoryVolume.search", () => {
         deleteBulk: vi.fn(),
         list: vi.fn(),
       },
-      search: { execute },
+      search: { memories, execute: vi.fn() },
     } as unknown as Supermemory;
     const volume = new SupermemoryVolume(client, "tag");
-    volume.pathIndex.insert("/a.md", "doc-1");
+    // PathIndex reverse-lookup to fill filepath when wire returns null.
     volume.pathIndex.insert("/b.md", "doc-2");
 
     const all = await volume.search({ q: "anything" });
-    expect(all.results.length).toBe(4); // 2 chunks from doc-1 + 1 from doc-2 + 1 placeholder
-    expect(all.results[0]?.filepath).toBe("/a.md");
-    expect(all.results[0]?.chunk).toBe("first chunk");
+    expect(memories).toHaveBeenCalledTimes(1);
+    expect(memories.mock.calls[0]?.[0]).toMatchObject({
+      q: "anything",
+      searchMode: "hybrid",
+      include: { documents: true },
+    });
+    expect(all.results.length).toBe(2);
+    expect(all.results[0]).toMatchObject({
+      memory: "fact about plants",
+      filepath: "/a.md",
+      similarity: 0.9,
+    });
+    expect(all.results[1]).toMatchObject({
+      chunk: "raw chunk from doc-2",
+      filepath: "/b.md", // fell back to PathIndex reverse-lookup
+    });
+  });
 
-    const filtered = await volume.search({ q: "anything", filepath: "/a.md" });
-    expect(filtered.results.length).toBe(2);
-    expect(filtered.results.every((r) => r.filepath === "/a.md")).toBe(true);
+  it("filters by filepath: prefix match when trailing slash, exact otherwise", async () => {
+    const memories = vi.fn().mockResolvedValue({
+      results: [
+        { id: "1", memory: "a", similarity: 0.9, filepath: "/notes/a.md", documents: [] },
+        { id: "2", memory: "b", similarity: 0.8, filepath: "/other/b.md", documents: [] },
+      ],
+      total: 2,
+      timing: 50,
+    });
+    const client = {
+      documents: {
+        add: vi.fn(),
+        update: vi.fn(),
+        get: vi.fn(),
+        delete: vi.fn(),
+        deleteBulk: vi.fn(),
+        list: vi.fn(),
+      },
+      search: { memories, execute: vi.fn() },
+    } as unknown as Supermemory;
+    const volume = new SupermemoryVolume(client, "tag");
+
+    const prefixed = await volume.search({ q: "x", filepath: "/notes/" });
+    expect(prefixed.results.length).toBe(1);
+    expect(prefixed.results[0]?.filepath).toBe("/notes/a.md");
+
+    const exact = await volume.search({ q: "x", filepath: "/other/b.md" });
+    expect(exact.results.length).toBe(1);
+    expect(exact.results[0]?.filepath).toBe("/other/b.md");
   });
 });
 

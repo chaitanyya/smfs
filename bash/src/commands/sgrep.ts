@@ -9,13 +9,19 @@ interface SgrepArgs {
 }
 
 const HELP =
-  "Usage: sgrep [-p PREFIX] QUERY\n" +
-  "  Semantic search across the Supermemory container. Returns ranked\n" +
-  "  chunks formatted as 'filepath:chunk_content' with newlines escaped.\n" +
+  "Usage: sgrep QUERY [PATH]\n" +
+  "       sgrep [-p PATH] QUERY\n" +
+  "  Semantic search across the Supermemory container. Output mirrors\n" +
+  "  grep: 'filepath:line' for every line in every matching passage,\n" +
+  "  ranked by semantic similarity descending.\n" +
   "\n" +
-  "  -p PREFIX   Restrict to files whose path equals PREFIX (or starts\n" +
-  "              with PREFIX if it ends with '/').\n" +
+  "  PATH        Restrict to files whose path equals PATH (or starts\n" +
+  "              with PATH if it ends with '/'). Positional or via -p.\n" +
   "  --help      Show this help.\n";
+
+function looksLikePath(s: string): boolean {
+  return s.startsWith("/");
+}
 
 export function parseSgrepArgs(argv: string[]): SgrepArgs | { error: string } {
   const out: SgrepArgs = { query: "", filepath: undefined, help: false };
@@ -36,23 +42,43 @@ export function parseSgrepArgs(argv: string[]): SgrepArgs | { error: string } {
   }
   if (out.help) return out;
   if (positional.length === 0) return { error: "sgrep: missing QUERY (try --help)" };
+
+  // Grep-style positional path: `sgrep "term" /notes/` — last positional
+  // starting with "/" is treated as the path scope, unless -p was already set.
+  if (out.filepath === undefined && positional.length >= 2) {
+    const last = positional[positional.length - 1];
+    if (last && looksLikePath(last)) {
+      out.filepath = last;
+      positional.pop();
+    }
+  }
   out.query = positional.join(" ");
   return out;
 }
 
-export function escapeChunk(s: string): string {
+function escapeForOneLine(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/\r/g, "\\r").replace(/\n/g, "\\n");
 }
 
 export function formatSgrepOutput(results: SearchResult[]): string {
   if (results.length === 0) return "";
+  // Match smfs `smfs grep` output (crates/smfs/src/cmd/grep.rs:175-194):
+  // one line per match, `filepath:content` with newlines escaped so each
+  // match stays on a single line. Prefer `memory` (smfs's preferred field)
+  // over `chunk`. Blank line between matches.
   const lines: string[] = [];
   for (const r of results) {
     const fp = r.filepath ?? "(unknown)";
-    const chunk = typeof r.chunk === "string" ? escapeChunk(r.chunk) : "";
-    lines.push(`${fp}:${chunk}`);
+    const content =
+      typeof r.memory === "string" && r.memory.length > 0
+        ? r.memory
+        : typeof r.chunk === "string"
+          ? r.chunk
+          : "";
+    if (content.length === 0) continue;
+    lines.push(`${fp}:${escapeForOneLine(content)}`);
   }
-  return `${lines.join("\n\n")}\n`;
+  return lines.length === 0 ? "" : `${lines.join("\n\n")}\n`;
 }
 
 export const sgrepCommand = defineCommand("sgrep", async (argv, ctx) => {
