@@ -290,25 +290,61 @@ export class SupermemoryVolume {
   }
 
   async removeByPrefix(prefix: string): Promise<RemoveByPrefixResult> {
-    const matches: Array<{ id: string; filepath: string }> = [];
     const filterArg = this.filterArgFor(prefix, false);
-    for await (const m of this.iterContainer({ filepath: filterArg, includeContent: false })) {
+    if (filterArg === undefined) {
+      // Empty prefix — server-side filepath omission would target every doc
+      // including filepath-NULL ones. Iterate to match only filepath-having
+      // docs we can model.
+      return this.removeByPrefixViaList(prefix);
+    }
+
+    let deleted = 0;
+    const errors: Error[] = [];
+    try {
+      const resp = await this.client.documents.deleteBulk({
+        containerTags: [this.containerTag],
+        // @ts-expect-error filepath not in DocumentDeleteBulkParams typing yet (wire accepts it)
+        filepath: filterArg,
+      });
+      deleted = resp.deletedCount ?? 0;
+      for (const e of resp.errors ?? []) {
+        errors.push(new Error(`${e.id}: ${e.error}`));
+      }
+    } catch (err) {
+      errors.push(new Error(`removeByPrefix(${prefix}): ${(err as Error).message}`));
+      return { deleted, errors };
+    }
+
+    // Evict matching paths from local state. We don't get the affected IDs
+    // back from the server, so walk PathIndex by prefix.
+    for (const p of this.pathIndex.paths()) {
+      if (p.startsWith(prefix)) {
+        this.pathIndex.remove(p);
+        this.cache.delete(p);
+      }
+    }
+
+    return { deleted, errors };
+  }
+
+  private async removeByPrefixViaList(prefix: string): Promise<RemoveByPrefixResult> {
+    // Fallback path: paginate, gather ids, deleteBulk by ids in batches of 100.
+    // Used only when prefix is empty/root (server-side filepath would behave
+    // differently for filepath-NULL docs).
+    const matches: Array<{ id: string; filepath: string }> = [];
+    for await (const m of this.iterContainer({ includeContent: false })) {
       const r = m as { id: string; filepath?: string };
       if (typeof r.filepath === "string" && r.filepath.startsWith(prefix)) {
         matches.push({ id: r.id, filepath: r.filepath });
       }
     }
-
     if (matches.length === 0) return { deleted: 0, errors: [] };
-
     let deleted = 0;
     const errors: Error[] = [];
     for (let i = 0; i < matches.length; i += 100) {
       const batch = matches.slice(i, i + 100);
       try {
-        const resp = await this.client.documents.deleteBulk({
-          ids: batch.map((m) => m.id),
-        });
+        const resp = await this.client.documents.deleteBulk({ ids: batch.map((m) => m.id) });
         deleted += resp.deletedCount ?? 0;
         for (const e of resp.errors ?? []) {
           errors.push(new Error(`${e.id}: ${e.error}`));
@@ -318,7 +354,6 @@ export class SupermemoryVolume {
         for (const m of batch) errors.push(new Error(`${m.id}: ${msg}`));
       }
     }
-
     const erredIds = new Set<string>();
     for (const e of errors) {
       const id = e.message.split(":")[0]?.trim();
@@ -330,22 +365,43 @@ export class SupermemoryVolume {
         this.cache.delete(m.filepath);
       }
     }
-
     return { deleted, errors };
   }
 
   async moveDoc(from: string, to: string): Promise<void> {
-    if (!(await this.lookupDocId(from))) throw enoent(from);
+    const docId = await this.lookupDocId(from);
+    if (!docId) throw enoent(from);
     if (await this.lookupDocId(to)) throw eexist(to);
 
-    // The Supermemory API silently ignores `filepath` on PATCH (verified on the
-    // wire — POST applies it, PATCH does not). So move = read source + write
-    // destination + remove source. Side effect: docId changes.
-    const src = await this.getDoc(from);
-    if (!src) throw enoent(from);
+    // PATCH with filepath ONLY (no content) updates filepath server-side.
+    // Verified by B4.0 wire probe and matches smfs's rename mechanism
+    // (smfs/sync/push.rs:313-318). When `content` is included on PATCH the
+    // wire silently ignores filepath; without content it honors filepath.
+    try {
+      await this.client.documents.update(docId, {
+        containerTag: this.containerTag,
+        // @ts-expect-error filepath not in DocumentUpdateParams typing yet
+        filepath: to,
+      });
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status === 404) {
+        this.pathIndex.remove(from);
+        this.cache.delete(from);
+        throw enoent(from);
+      }
+      if (status === 409) throw ebusy(from);
+      throw eio(`moveDoc(${from} → ${to}): ${(err as Error).message}`);
+    }
 
-    await this.addDoc(to, src.content);
-    await this.removeDoc(from);
+    // Move local state — docId stays stable.
+    const cached = this.cache.get(from);
+    this.pathIndex.remove(from);
+    this.pathIndex.insert(to, docId);
+    if (cached) {
+      this.cache.set(to, cached.content, cached.status);
+      this.cache.delete(from);
+    }
   }
 
   // --- listing & stat ---

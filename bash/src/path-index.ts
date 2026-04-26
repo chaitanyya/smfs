@@ -29,6 +29,10 @@ export class PathIndex {
     this.syntheticDirs.add(path);
   }
 
+  removeSyntheticDir(path: string): void {
+    this.syntheticDirs.delete(path);
+  }
+
   isFile(path: string): boolean {
     return this.files.has(path);
   }

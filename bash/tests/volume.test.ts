@@ -448,160 +448,68 @@ function makeVolumeForBulk(
 }
 
 describe("SupermemoryVolume.removeByPrefix", () => {
-  it("returns {deleted:0, errors:[]} when no matches; deleteBulk not called", async () => {
-    const { volume, deleteBulk } = makeVolumeForBulk([
-      {
-        memories: [],
-        pagination: { currentPage: 1, totalPages: 1, totalItems: 0 },
-      },
-    ]);
-    const result = await volume.removeByPrefix("/anything/");
-    expect(result).toEqual({ deleted: 0, errors: [] });
-    expect(deleteBulk).not.toHaveBeenCalled();
-  });
-
-  it("calls deleteBulk once with all matching ids and returns deleted count", async () => {
-    const { volume, deleteBulk } = makeVolumeForBulk(
-      [
-        {
-          memories: [
-            { id: "id1", filepath: "/notes/a.md" },
-            { id: "id2", filepath: "/notes/b.md" },
-          ],
-          pagination: { currentPage: 1, totalPages: 1, totalItems: 2 },
-        },
-      ],
-      { deletedCount: 2, success: true },
-    );
+  it("calls deleteBulk once with {containerTags, filepath} and evicts matching paths", async () => {
+    const { volume, deleteBulk } = makeVolumeForBulk([], { deletedCount: 2, success: true });
     volume.pathIndex.insert("/notes/a.md", "id1");
     volume.pathIndex.insert("/notes/b.md", "id2");
+    volume.pathIndex.insert("/other.md", "id3");
     const result = await volume.removeByPrefix("/notes/");
     expect(deleteBulk).toHaveBeenCalledTimes(1);
-    expect(deleteBulk.mock.calls[0]?.[0]).toEqual({ ids: ["id1", "id2"] });
+    expect(deleteBulk.mock.calls[0]?.[0]).toMatchObject({
+      containerTags: ["tag"],
+      filepath: "/notes/",
+    });
     expect(result.deleted).toBe(2);
-    expect(result.errors).toEqual([]);
     expect(volume.pathIndex.resolve("/notes/a.md")).toBeNull();
     expect(volume.pathIndex.resolve("/notes/b.md")).toBeNull();
+    expect(volume.pathIndex.resolve("/other.md")).toBe("id3");
   });
 
-  it("excludes memories without filepath and memories outside the prefix", async () => {
-    const { volume, deleteBulk } = makeVolumeForBulk(
+  it("empty prefix falls back to list+deleteBulk-by-ids (preserves filepath-NULL behavior)", async () => {
+    const { volume, list, deleteBulk } = makeVolumeForBulk(
       [
         {
-          memories: [
-            { id: "id1", filepath: "/notes/a.md" },
-            { id: "id2" }, // no filepath
-            { id: "id3", filepath: "/other/b.md" },
-          ],
-          pagination: { currentPage: 1, totalPages: 1, totalItems: 3 },
+          memories: [{ id: "id1", filepath: "/a.md" }],
+          pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
         },
       ],
       { deletedCount: 1, success: true },
     );
-    await volume.removeByPrefix("/notes/");
+    await volume.removeByPrefix("");
+    expect(list).toHaveBeenCalled();
     expect(deleteBulk.mock.calls[0]?.[0]).toEqual({ ids: ["id1"] });
-  });
-
-  it("paginates through multiple pages", async () => {
-    const { volume, list, deleteBulk } = makeVolumeForBulk(
-      [
-        {
-          memories: [{ id: "id1", filepath: "/x/a.md" }],
-          pagination: { currentPage: 1, totalPages: 2, totalItems: 2 },
-        },
-        {
-          memories: [{ id: "id2", filepath: "/x/b.md" }],
-          pagination: { currentPage: 2, totalPages: 2, totalItems: 2 },
-        },
-      ],
-      { deletedCount: 2, success: true },
-    );
-    await volume.removeByPrefix("/x/");
-    expect(list).toHaveBeenCalledTimes(2);
-    expect(deleteBulk.mock.calls[0]?.[0]).toEqual({ ids: ["id1", "id2"] });
-  });
-
-  it("splits matches >100 into multiple deleteBulk calls", async () => {
-    const memories = Array.from({ length: 150 }, (_, i) => ({
-      id: `id${i}`,
-      filepath: `/big/${i}.md`,
-    }));
-    const { volume, deleteBulk } = makeVolumeForBulk(
-      [
-        {
-          memories,
-          pagination: { currentPage: 1, totalPages: 1, totalItems: 150 },
-        },
-      ],
-      { deletedCount: 100, success: true },
-    );
-    deleteBulk.mockResolvedValueOnce({ deletedCount: 100, success: true });
-    deleteBulk.mockResolvedValueOnce({ deletedCount: 50, success: true });
-    const result = await volume.removeByPrefix("/big/");
-    expect(deleteBulk).toHaveBeenCalledTimes(2);
-    const firstBatch = deleteBulk.mock.calls[0]?.[0] as { ids: string[] };
-    const secondBatch = deleteBulk.mock.calls[1]?.[0] as { ids: string[] };
-    expect(firstBatch.ids.length).toBe(100);
-    expect(secondBatch.ids.length).toBe(50);
-    expect(result.deleted).toBe(150);
-  });
-
-  it("translates per-id errors[] into Error[] and keeps erred entries in pathIndex", async () => {
-    const { volume } = makeVolumeForBulk(
-      [
-        {
-          memories: [
-            { id: "id1", filepath: "/n/a.md" },
-            { id: "id2", filepath: "/n/b.md" },
-          ],
-          pagination: { currentPage: 1, totalPages: 1, totalItems: 2 },
-        },
-      ],
-      {
-        deletedCount: 1,
-        success: false,
-        errors: [{ id: "id2", error: "still processing" }],
-      },
-    );
-    volume.pathIndex.insert("/n/a.md", "id1");
-    volume.pathIndex.insert("/n/b.md", "id2");
-    const result = await volume.removeByPrefix("/n/");
-    expect(result.deleted).toBe(1);
-    expect(result.errors.length).toBe(1);
-    expect(result.errors[0]?.message).toContain("id2");
-    expect(volume.pathIndex.resolve("/n/a.md")).toBeNull();
-    expect(volume.pathIndex.resolve("/n/b.md")).toBe("id2");
   });
 });
 
-// moveDoc is implemented as get+add+remove because the Supermemory wire
-// silently ignores filepath on PATCH (verified against production). docId
-// changes across a move. Tests cover the branch logic; the orchestration is
-// validated against production in .scratch/validate-b2.8.ts.
+// moveDoc is a single PATCH with filepath only (no content). Verified by B4.0
+// wire probe + matches smfs's rename mechanism. docId stays stable.
 describe("SupermemoryVolume.moveDoc", () => {
   function makeMoveClient() {
+    const update = vi.fn().mockResolvedValue({ id: "doc-x", status: "done" });
     const client = {
       documents: {
-        add: vi.fn().mockResolvedValue({ id: "new-doc", status: "done" }),
-        update: vi.fn(),
-        get: vi.fn().mockResolvedValue({ id: "old-doc", content: "body", status: "done" }),
-        delete: vi.fn().mockResolvedValue(undefined),
+        add: vi.fn(),
+        update,
+        get: vi.fn(),
+        delete: vi.fn(),
         deleteBulk: vi.fn(),
         list: vi.fn().mockResolvedValue(emptyListResp),
       },
     } as unknown as Supermemory;
-    return client;
+    return { client, update };
   }
 
   it("throws ENOENT when source path is not in pathIndex", async () => {
-    const volume = new SupermemoryVolume(makeMoveClient(), "tag");
+    const { client } = makeMoveClient();
+    const volume = new SupermemoryVolume(client, "tag");
     await expect(volume.moveDoc("/missing.md", "/dst.md")).rejects.toMatchObject({
       code: "ENOENT",
     });
   });
 
   it("throws EEXIST when destination is already in pathIndex", async () => {
-    const volume = new SupermemoryVolume(makeMoveClient(), "tag");
+    const { client } = makeMoveClient();
+    const volume = new SupermemoryVolume(client, "tag");
     volume.pathIndex.insert("/src.md", "doc-src");
     volume.pathIndex.insert("/dst.md", "doc-dst");
     await expect(volume.moveDoc("/src.md", "/dst.md")).rejects.toMatchObject({
@@ -609,14 +517,19 @@ describe("SupermemoryVolume.moveDoc", () => {
     });
   });
 
-  it("on success: source removed, destination added with new docId, cache reflects move", async () => {
-    const client = makeMoveClient();
+  it("on success: PATCH with filepath only (no content), docId stable, cache moves", async () => {
+    const { client, update } = makeMoveClient();
     const volume = new SupermemoryVolume(client, "tag");
-    volume.pathIndex.insert("/old.md", "old-doc");
+    volume.pathIndex.insert("/old.md", "doc-x");
     volume.cache.set("/old.md", "body", "done");
     await volume.moveDoc("/old.md", "/new.md");
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.calls[0]?.[0]).toBe("doc-x");
+    const body = update.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(body.filepath).toBe("/new.md");
+    expect(body.content).toBeUndefined(); // critical: no content on PATCH
     expect(volume.pathIndex.resolve("/old.md")).toBeNull();
-    expect(volume.pathIndex.resolve("/new.md")).toBe("new-doc");
+    expect(volume.pathIndex.resolve("/new.md")).toBe("doc-x"); // SAME docId
     expect(volume.cache.get("/old.md")).toBeNull();
     expect(volume.cache.get("/new.md")?.content).toBe("body");
   });
@@ -821,7 +734,14 @@ describe("SupermemoryVolume — wire fallback on PathIndex miss (B2.13)", () => 
       pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
     });
     const client = {
-      documents: { add: vi.fn(), update: vi.fn(), get: vi.fn(), delete: vi.fn(), deleteBulk: vi.fn(), list },
+      documents: {
+        add: vi.fn(),
+        update: vi.fn(),
+        get: vi.fn(),
+        delete: vi.fn(),
+        deleteBulk: vi.fn(),
+        list,
+      },
     } as unknown as Supermemory;
     const volume = new SupermemoryVolume(client, "tag");
     await volume.listByPrefix("/notes/");
@@ -831,7 +751,14 @@ describe("SupermemoryVolume — wire fallback on PathIndex miss (B2.13)", () => 
   it("listByPrefix omits filepath when prefix is empty (full container)", async () => {
     const list = vi.fn().mockResolvedValue(emptyListResp);
     const client = {
-      documents: { add: vi.fn(), update: vi.fn(), get: vi.fn(), delete: vi.fn(), deleteBulk: vi.fn(), list },
+      documents: {
+        add: vi.fn(),
+        update: vi.fn(),
+        get: vi.fn(),
+        delete: vi.fn(),
+        deleteBulk: vi.fn(),
+        list,
+      },
     } as unknown as Supermemory;
     const volume = new SupermemoryVolume(client, "tag");
     await volume.listByPrefix("");

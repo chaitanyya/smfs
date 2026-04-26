@@ -7,7 +7,7 @@ import type {
   MkdirOptions,
   RmOptions,
 } from "just-bash";
-import { eisdir, enoent, enotdir } from "./errors.js";
+import { eexist, eio, eisdir, enoent, enosys, enotdir, enotempty, FsError } from "./errors.js";
 import type { SupermemoryVolume } from "./volume.js";
 
 // Mirrored from just-bash/fs/interface.ts — not publicly re-exported there.
@@ -140,58 +140,203 @@ export class SupermemoryFs implements IFileSystem {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  // --- B4: write path + no-ops + not-supported ---
+  // --- B4: write path ---
 
   async writeFile(
-    _path: string,
-    _content: FileContent,
+    path: string,
+    content: FileContent,
     _options?: WriteFileOptions | BufferEncoding,
   ): Promise<void> {
-    throw new Error("not implemented (B4)");
+    const norm = normalizePath(path);
+    if (this.volume.pathIndex.isDirectory(norm) && !this.volume.pathIndex.isFile(norm)) {
+      throw eisdir(norm);
+    }
+    const data =
+      typeof content === "string" ? content : new TextDecoder().decode(content as Uint8Array);
+    await this.volume.addDoc(norm, data);
   }
 
   async appendFile(
-    _path: string,
-    _content: FileContent,
+    path: string,
+    content: FileContent,
     _options?: WriteFileOptions | BufferEncoding,
   ): Promise<void> {
-    throw new Error("not implemented (B4)");
+    const norm = normalizePath(path);
+    if (this.volume.pathIndex.isDirectory(norm) && !this.volume.pathIndex.isFile(norm)) {
+      throw eisdir(norm);
+    }
+    const existing = await this.volume.getDoc(norm);
+    const head = existing
+      ? typeof existing.content === "string"
+        ? existing.content
+        : new TextDecoder().decode(existing.content)
+      : "";
+    const tail =
+      typeof content === "string" ? content : new TextDecoder().decode(content as Uint8Array);
+    await this.volume.addDoc(norm, head + tail);
   }
 
-  async mkdir(_path: string, _options?: MkdirOptions): Promise<void> {
-    throw new Error("not implemented (B4)");
+  async mkdir(path: string, options?: MkdirOptions): Promise<void> {
+    const norm = normalizePath(path);
+    if (this.volume.pathIndex.isFile(norm)) throw enotdir(norm);
+    if (this.volume.pathIndex.isDirectory(norm) && !options?.recursive) {
+      throw eexist(norm);
+    }
+    if (options?.recursive) {
+      const segments = norm.split("/").filter(Boolean);
+      let cur = "";
+      for (const seg of segments) {
+        cur += `/${seg}`;
+        this.volume.markSyntheticDir(cur);
+      }
+    } else {
+      this.volume.markSyntheticDir(norm);
+    }
   }
 
-  async rm(_path: string, _options?: RmOptions): Promise<void> {
-    throw new Error("not implemented (B4)");
+  async rm(path: string, options?: RmOptions): Promise<void> {
+    const norm = normalizePath(path);
+    const isDir = this.volume.pathIndex.isDirectory(norm) && !this.volume.pathIndex.isFile(norm);
+    if (isDir) {
+      if (!options?.recursive) throw eisdir(norm);
+      const prefix = norm.endsWith("/") ? norm : `${norm}/`;
+      const result = await this.volume.removeByPrefix(prefix);
+      this.volume.pathIndex.removeSyntheticDir(norm);
+      if (result.errors.length > 0 && !options.force) {
+        throw eio(`rm(${norm}): ${result.errors.length} subpath(s) failed to delete`);
+      }
+      return;
+    }
+    try {
+      const docId = this.volume.pathIndex.resolve(norm);
+      if (!docId) {
+        if (options?.force) return;
+        throw enoent(norm);
+      }
+      await this.volume.removeDoc(norm);
+    } catch (err) {
+      if (options?.force && err instanceof FsError && err.code === "ENOENT") return;
+      throw err;
+    }
   }
 
-  async cp(_src: string, _dest: string, _options?: CpOptions): Promise<void> {
-    throw new Error("not implemented (B4)");
+  async rmdir(path: string, _options?: RmOptions): Promise<void> {
+    const norm = normalizePath(path);
+    if (this.volume.pathIndex.isFile(norm)) throw enotdir(norm);
+    const prefix = norm === "/" ? "/" : `${norm}/`;
+    const probe = await this.volume.listByPrefix(prefix, { limit: 1 });
+    if (probe.length > 0) throw enotempty(norm);
+    if (!this.volume.pathIndex.isDirectory(norm)) throw enoent(norm);
+    this.volume.pathIndex.removeSyntheticDir(norm);
   }
 
-  async mv(_src: string, _dest: string): Promise<void> {
-    throw new Error("not implemented (B4)");
+  async mv(src: string, dest: string): Promise<void> {
+    const srcN = normalizePath(src);
+    const destN = normalizePath(dest);
+    const isDir = this.volume.pathIndex.isDirectory(srcN) && !this.volume.pathIndex.isFile(srcN);
+    if (isDir) {
+      return this.mvDirectory(srcN, destN);
+    }
+    await this.volume.moveDoc(srcN, destN);
   }
+
+  private async mvDirectory(srcDir: string, destDir: string): Promise<void> {
+    const srcPrefix = srcDir.endsWith("/") ? srcDir : `${srcDir}/`;
+    const destPrefix = destDir.endsWith("/") ? destDir : `${destDir}/`;
+    const entries = await this.volume.listByPrefix(srcPrefix);
+    if (entries.length === 0) {
+      // empty dir — just move synthetic flag
+      if (this.volume.pathIndex.isDirectory(srcDir)) {
+        this.volume.pathIndex.removeSyntheticDir(srcDir);
+        this.volume.markSyntheticDir(destDir);
+      } else {
+        throw enoent(srcDir);
+      }
+      return;
+    }
+    const errors: Error[] = [];
+    const concurrency = 4;
+    for (let i = 0; i < entries.length; i += concurrency) {
+      const batch = entries.slice(i, i + concurrency);
+      await Promise.all(
+        batch.map(async (e) => {
+          const newPath = destPrefix + e.filepath.slice(srcPrefix.length);
+          try {
+            await this.volume.moveDoc(e.filepath, newPath);
+          } catch (err) {
+            errors.push(err as Error);
+          }
+        }),
+      );
+    }
+    this.volume.pathIndex.removeSyntheticDir(srcDir);
+    if (errors.length > 0) {
+      throw eio(`mv(${srcDir} → ${destDir}): ${errors.length} of ${entries.length} failed`);
+    }
+  }
+
+  async cp(src: string, dest: string, options?: CpOptions): Promise<void> {
+    const srcN = normalizePath(src);
+    const destN = normalizePath(dest);
+    const isDir = this.volume.pathIndex.isDirectory(srcN) && !this.volume.pathIndex.isFile(srcN);
+    if (isDir) {
+      if (!options?.recursive) throw eisdir(srcN);
+      return this.cpDirectory(srcN, destN);
+    }
+    const doc = await this.volume.getDoc(srcN);
+    if (!doc) throw enoent(srcN);
+    await this.volume.addDoc(destN, doc.content);
+  }
+
+  private async cpDirectory(srcDir: string, destDir: string): Promise<void> {
+    const srcPrefix = srcDir.endsWith("/") ? srcDir : `${srcDir}/`;
+    const destPrefix = destDir.endsWith("/") ? destDir : `${destDir}/`;
+    const entries = await this.volume.listByPrefix(srcPrefix, { withContent: true });
+    if (entries.length === 0) {
+      if (!this.volume.pathIndex.isDirectory(srcDir)) throw enoent(srcDir);
+      this.volume.markSyntheticDir(destDir);
+      return;
+    }
+    const errors: Error[] = [];
+    const concurrency = 4;
+    for (let i = 0; i < entries.length; i += concurrency) {
+      const batch = entries.slice(i, i + concurrency);
+      await Promise.all(
+        batch.map(async (e) => {
+          const newPath = destPrefix + e.filepath.slice(srcPrefix.length);
+          try {
+            await this.volume.addDoc(newPath, e.content ?? "");
+          } catch (err) {
+            errors.push(err as Error);
+          }
+        }),
+      );
+    }
+    if (errors.length > 0) {
+      throw eio(`cp(${srcDir} → ${destDir}): ${errors.length} of ${entries.length} failed`);
+    }
+  }
+
+  // --- not supported (Supermemory has no permission/symlink model) ---
 
   async chmod(_path: string, _mode: number): Promise<void> {
-    throw new Error("not implemented (B4)");
+    throw enosys("chmod");
   }
 
   async utimes(_path: string, _atime: Date, _mtime: Date): Promise<void> {
-    throw new Error("not implemented (B4)");
+    throw enosys("utimes");
   }
 
   async symlink(_target: string, _linkPath: string): Promise<void> {
-    throw new Error("not implemented (B4)");
+    throw enosys("symlink");
   }
 
   async link(_existingPath: string, _newPath: string): Promise<void> {
-    throw new Error("not implemented (B4)");
+    throw enosys("link");
   }
 
   async readlink(_path: string): Promise<string> {
-    throw new Error("not implemented (B4)");
+    throw enosys("readlink");
   }
 
   // --- B5: glob expansion ---
