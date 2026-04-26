@@ -129,6 +129,17 @@ export class SupermemoryFs implements IFileSystem {
         existing.isFile = false;
       }
     }
+    // Synthetic dirs that are direct children of `norm` should show up too.
+    // Without this, `ls /` on a container that has only synthetic dirs (the
+    // standard layout createBash seeds) returns empty.
+    for (const synth of this.volume.pathIndex.syntheticDirPaths()) {
+      if (!synth.startsWith(prefix)) continue;
+      const rest = synth.slice(prefix.length);
+      if (!rest || rest.includes("/")) continue;
+      if (!entries.has(rest)) {
+        entries.set(rest, { isFile: false, isDirectory: true });
+      }
+    }
 
     return [...entries.entries()]
       .map(([name, kind]) => ({
@@ -342,14 +353,20 @@ export class SupermemoryFs implements IFileSystem {
   // --- B5: glob expansion ---
 
   /**
-   * Sync inventory used by just-bash for ls and glob expansion. Returns the
-   * volume's last-known path list expanded with all ancestor directory paths
-   * (just-bash's ls walks this list and expects directories to appear too).
-   * Populated by `listAllPaths` or the eager load that B6's `createBash` will
-   * do at construction; empty until then.
+   * Sync inventory used by just-bash for ls and glob expansion. Returns:
+   *   1. file paths from the volume's cached path list
+   *   2. all ancestor directory paths (so `ls /notes/` finds /notes)
+   *   3. synthetic dirs marked via markSyntheticDir (so `ls /` shows the
+   *      standard Linux-y layout createBash seeds — /home, /tmp, /dev — even
+   *      on an empty container)
+   * Populated by `listAllPaths` or the eager load `createBash` runs at
+   * construction; reflects synthetic dirs immediately.
    */
   getAllPaths(): string[] {
     const paths = new Set<string>();
+    // Root must be present so just-bash's `ls /` resolves; InMemoryFs does
+    // the same (`getAllPaths()` returns ["/", ...]).
+    paths.add("/");
     for (const p of this.volume.cachedAllPaths()) {
       paths.add(p);
       const segments = p.split("/").filter(Boolean);
@@ -359,6 +376,7 @@ export class SupermemoryFs implements IFileSystem {
         paths.add(cur);
       }
     }
+    for (const d of this.volume.pathIndex.syntheticDirPaths()) paths.add(d);
     return [...paths].sort();
   }
 }

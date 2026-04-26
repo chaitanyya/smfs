@@ -51,6 +51,11 @@ export class PathIndex {
     return Array.from(this.files.keys()).sort();
   }
 
+  /** Synthetic dirs marked via markSyntheticDir (sorted). */
+  syntheticDirPaths(): string[] {
+    return Array.from(this.syntheticDirs).sort();
+  }
+
   size(): number {
     return this.files.size;
   }

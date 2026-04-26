@@ -1,7 +1,13 @@
 // Public exports for @supermemory/bash.
 // Populated as milestones B2-B6 land.
 export { sgrepCommand } from "./commands/sgrep.js";
+export {
+  type CreateBashOptions,
+  type CreateBashResult,
+  createBash,
+} from "./create-bash.js";
 export { SupermemoryFs } from "./supermemory-fs.js";
+export { TOOL_DESCRIPTION } from "./tool-description.js";
 export type {
   DocResult,
   DocStat,
