@@ -543,7 +543,16 @@ export class SupermemoryVolume {
       const docId = rec.documentId;
       if (!docId) continue;
       const filepath = this.pathIndex.findPath(docId) ?? undefined;
-      if (params.filepath && filepath !== params.filepath) continue;
+      if (params.filepath) {
+        // Match our list semantics: trailing slash = prefix; otherwise exact.
+        const wantsPrefix = params.filepath.endsWith("/");
+        if (!filepath) continue;
+        if (wantsPrefix) {
+          if (!filepath.startsWith(params.filepath)) continue;
+        } else if (filepath !== params.filepath) {
+          continue;
+        }
+      }
       const chunks = rec.chunks ?? [];
       if (chunks.length === 0) {
         out.push({ id: docId, filepath, similarity: rec.score ?? 0 });
