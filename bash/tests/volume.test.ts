@@ -907,3 +907,94 @@ describe("SupermemoryVolume.isReservedPath", () => {
     expect(v.isReservedPath("/notes/profile.md")).toBe(false);
   });
 });
+
+describe("SupermemoryVolume.addDoc validation pipeline", () => {
+  function makeVolume() {
+    const add = vi.fn().mockResolvedValue({ id: "new-id", status: "done" });
+    const client = {
+      documents: {
+        add,
+        update: vi.fn(),
+        get: vi.fn(),
+        delete: vi.fn(),
+        deleteBulk: vi.fn(),
+        list: vi.fn().mockResolvedValue(emptyListResp),
+      },
+    } as unknown as Supermemory;
+    const volume = new SupermemoryVolume(client, "tag");
+    return { volume, add };
+  }
+
+  it("rejects extensionless path with EINVAL before any wire call", async () => {
+    const { volume, add } = makeVolume();
+    await expect(volume.addDoc("/memory", "x")).rejects.toThrow(/EINVAL/);
+    expect(add).not.toHaveBeenCalled();
+  });
+
+  it("rejects /profile.md with EPERM", async () => {
+    const { volume, add } = makeVolume();
+    await expect(volume.addDoc("/profile.md", "x")).rejects.toThrow(/EPERM/);
+    expect(add).not.toHaveBeenCalled();
+  });
+
+  it("rejects writing under a known file with ENOTDIR", async () => {
+    const { volume, add } = makeVolume();
+    volume.pathIndex.insert("/foo.md", "doc-1");
+    await expect(volume.addDoc("/foo.md/bar.md", "x")).rejects.toThrow(/ENOTDIR/);
+    expect(add).not.toHaveBeenCalled();
+  });
+
+  it("rejects writing to a path that has descendants with EISDIR", async () => {
+    const { volume, add } = makeVolume();
+    volume.pathIndex.insert("/foo.md/bar.md", "doc-1");
+    await expect(volume.addDoc("/foo.md", "x")).rejects.toThrow(/EISDIR/);
+    expect(add).not.toHaveBeenCalled();
+  });
+
+  it("accepts a valid, non-colliding path", async () => {
+    const { volume, add } = makeVolume();
+    await volume.addDoc("/notes/clean.md", "x");
+    expect(add).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("SupermemoryVolume.moveDoc validation on dest", () => {
+  it("rejects rename to a colliding dest before any wire call", async () => {
+    const update = vi.fn().mockResolvedValue({ id: "new-id", status: "done" });
+    const list = vi.fn().mockResolvedValue(emptyListResp);
+    const client = {
+      documents: {
+        add: vi.fn(),
+        update,
+        get: vi.fn(),
+        delete: vi.fn(),
+        deleteBulk: vi.fn(),
+        list,
+      },
+    } as unknown as Supermemory;
+    const volume = new SupermemoryVolume(client, "tag");
+    volume.pathIndex.insert("/parent.md", "doc-parent");
+    volume.pathIndex.insert("/somewhere.md", "doc-other");
+    await expect(volume.moveDoc("/somewhere.md", "/parent.md/inner.md")).rejects.toThrow(/ENOTDIR/);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("rejects rename to /profile.md", async () => {
+    const update = vi.fn();
+    const list = vi.fn().mockResolvedValue(emptyListResp);
+    const client = {
+      documents: {
+        add: vi.fn(),
+        update,
+        get: vi.fn(),
+        delete: vi.fn(),
+        deleteBulk: vi.fn(),
+        list,
+      },
+    } as unknown as Supermemory;
+    const volume = new SupermemoryVolume(client, "tag");
+    volume.pathIndex.insert("/foo.md", "doc-foo");
+    await expect(volume.moveDoc("/foo.md", "/profile.md")).rejects.toThrow(/EPERM/);
+    expect(update).not.toHaveBeenCalled();
+  });
+});

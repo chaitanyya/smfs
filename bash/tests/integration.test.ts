@@ -277,4 +277,15 @@ describe.skipIf(!apiKey)("integration: live container end-to-end", () => {
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toContain("/reading/highlights.txt");
   });
+
+  it("rejects writing under an existing file with ENOTDIR (no wire call)", {
+    timeout: 30_000,
+  }, async () => {
+    const probe = "/probe-collision.md";
+    const w1 = await bash.exec(`echo first > ${probe}`);
+    expect(w1.exitCode).toBe(0);
+    const w2 = await bash.exec(`echo second > ${probe}/inner.md`);
+    expect(w2.exitCode).toBe(1);
+    expect(w2.stderr).toMatch(/ENOTDIR|Not a directory/);
+  });
 });

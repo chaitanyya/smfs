@@ -5,6 +5,7 @@ import type { ProfileResponse } from "supermemory/resources/top-level";
 import { ebusy, eexist, efbig, eio, enoent } from "./errors.js";
 import { PathIndex } from "./path-index.js";
 import { SessionCache, type SessionCacheOptions } from "./session-cache.js";
+import { assertWritable } from "./validation/pipeline.js";
 
 // SDK's Memory type omits `filepath` and the per-status error fields.
 type MemoryWithPath = DocumentListResponse.Memory & {
@@ -162,6 +163,7 @@ export class SupermemoryVolume {
     if (content instanceof Uint8Array) {
       throw efbig(path);
     }
+    assertWritable({ path, intent: "addDoc", pathIndex: this.pathIndex });
 
     const existing = this.pathIndex.resolve(path);
     let id: string;
@@ -343,6 +345,7 @@ export class SupermemoryVolume {
   }
 
   async moveDoc(from: string, to: string): Promise<void> {
+    assertWritable({ path: to, intent: "moveDoc", pathIndex: this.pathIndex });
     const docId = await this.lookupDocId(from);
     if (!docId) throw enoent(from);
     if (await this.lookupDocId(to)) throw eexist(to);
