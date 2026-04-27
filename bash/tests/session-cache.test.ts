@@ -57,44 +57,44 @@ describe("SessionCache", () => {
     expect(cache.size()).toBe(1);
   });
 
-  it("done status uses terminal TTL (~60s)", () => {
+  it("default ttlMs (150_000) expires after 150s regardless of status", () => {
     const clock = makeClock();
     const cache = new SessionCache({ now: clock.now });
     cache.set("/a", "x", "done");
-    clock.advance(59_000);
+    cache.set("/b", "y", "processing");
+    clock.advance(149_000);
+    expect(cache.get("/a")).not.toBeNull();
+    expect(cache.get("/b")).not.toBeNull();
+    clock.advance(2_000);
+    expect(cache.get("/a")).toBeNull();
+    expect(cache.get("/b")).toBeNull();
+  });
+
+  it("custom ttlMs honored uniformly", () => {
+    const clock = makeClock();
+    const cache = new SessionCache({ ttlMs: 5_000, now: clock.now });
+    cache.set("/a", "x", "done");
+    clock.advance(4_000);
     expect(cache.get("/a")).not.toBeNull();
     clock.advance(2_000);
     expect(cache.get("/a")).toBeNull();
   });
 
-  it("failed status uses terminal TTL (~60s)", () => {
+  it("ttlMs: null means entries never expire", () => {
     const clock = makeClock();
-    const cache = new SessionCache({ now: clock.now });
-    cache.set("/a", "x", "failed");
-    clock.advance(59_000);
+    const cache = new SessionCache({ ttlMs: null, now: clock.now });
+    cache.set("/a", "x", "done");
+    clock.advance(60 * 60 * 1000); // 1 hour
     expect(cache.get("/a")).not.toBeNull();
-    clock.advance(2_000);
-    expect(cache.get("/a")).toBeNull();
   });
 
-  it("processing status uses inflight TTL (~15s)", () => {
+  it("ttlMs: 0 means cache is always expired (no caching)", () => {
     const clock = makeClock();
-    const cache = new SessionCache({ now: clock.now });
-    cache.set("/a", "x", "processing");
-    clock.advance(14_000);
-    expect(cache.get("/a")).not.toBeNull();
-    clock.advance(2_000);
+    const cache = new SessionCache({ ttlMs: 0, now: clock.now });
+    cache.set("/a", "x", "done");
+    // get() runs at the same instant as set() but ttlMs:0 means expiresAt === now,
+    // and our check is now >= expiresAt → always expired.
     expect(cache.get("/a")).toBeNull();
-  });
-
-  it("status-aware TTL: processing expires before done", () => {
-    const clock = makeClock();
-    const cache = new SessionCache({ now: clock.now });
-    cache.set("/done", "x", "done");
-    cache.set("/proc", "y", "processing");
-    clock.advance(16_000);
-    expect(cache.get("/proc")).toBeNull();
-    expect(cache.get("/done")).not.toBeNull();
   });
 
   it("evicts oldest entries when total bytes exceeds maxBytes", () => {

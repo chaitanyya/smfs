@@ -53,7 +53,7 @@ describe("SupermemoryVolume constructor", () => {
 
   it("propagates cacheOptions to the default SessionCache", () => {
     const v = new SupermemoryVolume(fakeClient, "tag", {
-      cacheOptions: { maxBytes: 256, terminalTtlMs: 1, inflightTtlMs: 1 },
+      cacheOptions: { maxBytes: 256, ttlMs: 1 },
     });
     // Confirm by overflowing the small byte cap
     v.cache.set("/a", "a".repeat(200), "done");
@@ -212,50 +212,60 @@ describe("SupermemoryVolume.addDoc / updateDoc", () => {
 });
 
 function makeVolumeWithGetMock(
-  getResp: unknown = { id: "doc-1", content: "hello", status: "done" },
+  doc: Record<string, unknown> | null = { id: "doc-1", content: "hello", status: "done" },
 ) {
-  const get = vi.fn().mockResolvedValue(getResp);
-  const list = vi.fn().mockResolvedValue(emptyListResp);
+  // After the cache refactor, getDoc on cache miss uses documents.list with a
+  // filepath filter rather than documents.get(id). The mock list returns a single
+  // memory matching the doc fixture (or empty when null).
+  const list = vi
+    .fn()
+    .mockResolvedValue(
+      doc
+        ? { memories: [doc], pagination: { currentPage: 1, totalPages: 1, totalItems: 1 } }
+        : emptyListResp,
+    );
   const client = {
-    documents: { add: vi.fn(), update: vi.fn(), get, list },
+    documents: { add: vi.fn(), update: vi.fn(), get: vi.fn(), list },
   } as unknown as Supermemory;
   const volume = new SupermemoryVolume(client, "test-tag");
-  return { volume, get, list };
+  return { volume, list };
 }
 
 describe("SupermemoryVolume.getDoc", () => {
-  it("returns null without calling SDK when path is not in pathIndex", async () => {
-    const { volume, get } = makeVolumeWithGetMock();
+  it("returns null when wire confirms the path doesn't exist", async () => {
+    const { volume, list } = makeVolumeWithGetMock(null); // empty list response
     const result = await volume.getDoc("/never-added.md");
     expect(result).toBeNull();
-    expect(get).not.toHaveBeenCalled();
+    expect(list).toHaveBeenCalledTimes(1);
   });
 
   it("returns from cache without calling SDK when cache is populated", async () => {
-    const { volume, get } = makeVolumeWithGetMock();
+    const { volume, list } = makeVolumeWithGetMock();
     volume.pathIndex.insert("/cached.md", "doc-c");
     volume.cache.set("/cached.md", "cached-content", "done");
     const result = await volume.getDoc("/cached.md");
-    expect(get).not.toHaveBeenCalled();
+    expect(list).not.toHaveBeenCalled();
     expect(result).toEqual({ id: "doc-c", content: "cached-content", status: "done" });
   });
 
-  it("calls client.documents.get(docId) and returns { id, content, status } on cache miss", async () => {
-    const { volume, get } = makeVolumeWithGetMock({
+  it("on cache miss calls documents.list with filepath filter and returns content", async () => {
+    const { volume, list } = makeVolumeWithGetMock({
       id: "doc-x",
       content: "fetched",
       status: "done",
     });
-    volume.pathIndex.insert("/a.md", "doc-x");
     const result = await volume.getDoc("/a.md");
-    expect(get).toHaveBeenCalledTimes(1);
-    expect(get).toHaveBeenCalledWith("doc-x");
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(list.mock.calls[0]?.[0]).toMatchObject({
+      filepath: "/a.md",
+      includeContent: true,
+      limit: 1,
+    });
     expect(result).toEqual({ id: "doc-x", content: "fetched", status: "done" });
   });
 
   it("status 'done' passes through", async () => {
     const { volume } = makeVolumeWithGetMock({ id: "d", content: "ok", status: "done" });
-    volume.pathIndex.insert("/a.md", "d");
     const result = await volume.getDoc("/a.md");
     expect(result?.status).toBe("done");
   });
@@ -270,7 +280,6 @@ describe("SupermemoryVolume.getDoc", () => {
     ["something-new-from-server"],
   ])("normalizes server status %s → 'processing'", async (serverStatus) => {
     const { volume } = makeVolumeWithGetMock({ id: "d", content: "x", status: serverStatus });
-    volume.pathIndex.insert("/a.md", "d");
     const result = await volume.getDoc("/a.md");
     expect(result?.status).toBe("processing");
   });
@@ -282,7 +291,6 @@ describe("SupermemoryVolume.getDoc", () => {
       status: "failed",
       errorMessage: "extraction timeout",
     });
-    volume.pathIndex.insert("/a.md", "d");
     const result = await volume.getDoc("/a.md");
     expect(result?.status).toBe("failed");
     expect(result?.errorReason).toBe("extraction timeout");
@@ -293,7 +301,6 @@ describe("SupermemoryVolume.getDoc", () => {
 
   it("status 'failed' with no error fields uses '(unknown)' as reason", async () => {
     const { volume } = makeVolumeWithGetMock({ id: "d", content: "", status: "failed" });
-    volume.pathIndex.insert("/a.md", "d");
     const result = await volume.getDoc("/a.md");
     expect(result?.errorReason).toBe("(unknown)");
     expect(result?.content).toMatch(/Reason: \(unknown\)$/);
@@ -301,7 +308,6 @@ describe("SupermemoryVolume.getDoc", () => {
 
   it("populates cache after successful fetch with normalized status", async () => {
     const { volume } = makeVolumeWithGetMock({ id: "d", content: "fresh", status: "queued" });
-    volume.pathIndex.insert("/a.md", "d");
     await volume.getDoc("/a.md");
     const cached = volume.cache.get("/a.md");
     expect(cached?.content).toBe("fresh");
@@ -309,48 +315,41 @@ describe("SupermemoryVolume.getDoc", () => {
   });
 
   it("caches the formatted blurb for failed docs (subsequent reads stay structured)", async () => {
-    const { volume, get } = makeVolumeWithGetMock({
+    const { volume, list } = makeVolumeWithGetMock({
       id: "d",
       content: "raw",
       status: "failed",
       errorMessage: "bad mime",
     });
-    volume.pathIndex.insert("/a.md", "d");
     await volume.getDoc("/a.md");
     const second = await volume.getDoc("/a.md");
-    expect(get).toHaveBeenCalledTimes(1);
+    expect(list).toHaveBeenCalledTimes(1); // second call is cache hit
     expect(second?.content).toContain("[supermemory.error: processing-failed]");
     expect(second?.content).toContain("Reason: bad mime");
   });
 
-  it("returns null and evicts pathIndex when SDK throws 404", async () => {
-    const get = vi.fn().mockRejectedValue(Object.assign(new Error("not found"), { status: 404 }));
-    const client = {
-      documents: { add: vi.fn(), update: vi.fn(), get },
-    } as unknown as Supermemory;
-    const volume = new SupermemoryVolume(client, "tag");
+  it("returns null and evicts pathIndex when wire reports the doc missing", async () => {
+    const { volume } = makeVolumeWithGetMock(null); // empty list response
     volume.pathIndex.insert("/stale.md", "doc-gone");
     const result = await volume.getDoc("/stale.md");
     expect(result).toBeNull();
     expect(volume.pathIndex.resolve("/stale.md")).toBeNull();
   });
 
-  it("throws eio when SDK throws non-404", async () => {
-    const get = vi
+  it("throws eio when SDK list throws", async () => {
+    const list = vi
       .fn()
       .mockRejectedValue(Object.assign(new Error("network down"), { status: 500 }));
     const client = {
-      documents: { add: vi.fn(), update: vi.fn(), get },
+      documents: { add: vi.fn(), update: vi.fn(), get: vi.fn(), list },
     } as unknown as Supermemory;
     const volume = new SupermemoryVolume(client, "tag");
-    volume.pathIndex.insert("/a.md", "d");
     await expect(volume.getDoc("/a.md")).rejects.toMatchObject({ code: "EIO" });
     await expect(volume.getDoc("/a.md")).rejects.toBeInstanceOf(FsError);
   });
 
   it("treats null SDK content as empty string", async () => {
     const { volume } = makeVolumeWithGetMock({ id: "d", content: null, status: "done" });
-    volume.pathIndex.insert("/a.md", "d");
     const result = await volume.getDoc("/a.md");
     expect(result?.content).toBe("");
   });
@@ -738,13 +737,21 @@ describe("SupermemoryVolume.configureMemoryPaths", () => {
 // "single way" read methods learn a docId, with a wire fallback on cache miss.
 describe("SupermemoryVolume — wire fallback on PathIndex miss (B2.13)", () => {
   it("getDoc on cold PathIndex falls back to documents.list and finds the doc", async () => {
+    // List response now carries content directly (includeContent:true is part
+    // of the new cache-miss request shape).
     const list = vi.fn().mockResolvedValue({
-      memories: [{ id: "doc-z", filepath: "/cold.md" }],
+      memories: [{ id: "doc-z", filepath: "/cold.md", content: "found", status: "done" }],
       pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
     });
-    const get = vi.fn().mockResolvedValue({ id: "doc-z", content: "found", status: "done" });
     const client = {
-      documents: { add: vi.fn(), update: vi.fn(), get, list, delete: vi.fn(), deleteBulk: vi.fn() },
+      documents: {
+        add: vi.fn(),
+        update: vi.fn(),
+        get: vi.fn(),
+        list,
+        delete: vi.fn(),
+        deleteBulk: vi.fn(),
+      },
     } as unknown as Supermemory;
     const volume = new SupermemoryVolume(client, "tag");
     const result = await volume.getDoc("/cold.md");
@@ -753,6 +760,7 @@ describe("SupermemoryVolume — wire fallback on PathIndex miss (B2.13)", () => 
       containerTags: ["tag"],
       filepath: "/cold.md",
       limit: 1,
+      includeContent: true,
     });
     expect(result?.content).toBe("found");
     expect(volume.pathIndex.resolve("/cold.md")).toBe("doc-z");

@@ -225,44 +225,58 @@ export class SupermemoryVolume {
   }
 
   async getDoc(path: string): Promise<DocResult | null> {
-    const docId = await this.lookupDocId(path);
-    if (!docId) return null;
-
-    const cached = this.cache.get(path);
-    if (cached) {
-      return { id: docId, content: cached.content, status: cached.status };
+    // Cache is path-keyed and authoritative for self-writes; if we have a
+    // hit we never need to confirm with the wire.
+    const cachedFast = this.cache.get(path);
+    if (cachedFast) {
+      const docId = this.pathIndex.resolve(path);
+      if (docId) return { id: docId, content: cachedFast.content, status: cachedFast.status };
     }
 
+    // Cache miss → list-by-filepath. One endpoint for every read fallback
+    // (lookupDocId, getDoc, statDoc all converge here). Returns latest
+    // server state by definition; we don't need a separate get-by-id.
     let resp: unknown;
     try {
-      resp = await this.client.documents.get(docId);
+      resp = await this.client.documents.list({
+        containerTags: [this.containerTag],
+        limit: 1,
+        page: 1,
+        includeContent: true,
+        // @ts-expect-error filepath not in DocumentListParams typing yet (wire accepts it; exact match without trailing slash)
+        filepath: path,
+      });
     } catch (err) {
-      const status = (err as { status?: number }).status;
-      if (status === 404) {
-        this.pathIndex.remove(path);
-        this.cache.delete(path);
-        return null;
-      }
       throw eio(`getDoc(${path}): ${(err as Error).message}`);
     }
 
-    const r = resp as Record<string, unknown>;
-    const serverStatus = typeof r.status === "string" ? r.status : "unknown";
+    const m = (resp as { memories?: Array<Record<string, unknown>> }).memories?.[0];
+    // Server confirms the doc doesn't exist OR returned a memory that doesn't
+    // match the requested filepath (defensive against stale-listing weirdness).
+    const fp = m && typeof m.filepath === "string" ? m.filepath : null;
+    if (!m || (fp !== null && fp !== path)) {
+      this.pathIndex.remove(path);
+      this.cache.delete(path);
+      return null;
+    }
+    const docId = typeof m.id === "string" ? m.id : "";
+    const serverStatus = typeof m.status === "string" ? m.status : "unknown";
     const status = normalizeStatus(serverStatus);
-    const rawContent = typeof r.content === "string" ? r.content : "";
+    const rawContent = typeof m.content === "string" ? m.content : "";
 
     let content: string = rawContent;
     let errorReason: string | undefined;
     if (status === "failed") {
       errorReason =
-        (typeof r.errorMessage === "string" && r.errorMessage) ||
-        (typeof r.errorReason === "string" && r.errorReason) ||
-        (typeof r.error === "string" && r.error) ||
-        (typeof r.failureReason === "string" && r.failureReason) ||
+        (typeof m.errorMessage === "string" && m.errorMessage) ||
+        (typeof m.errorReason === "string" && m.errorReason) ||
+        (typeof m.error === "string" && m.error) ||
+        (typeof m.failureReason === "string" && m.failureReason) ||
         "(unknown)";
       content = `[supermemory.error: processing-failed]\n\nThis document could not be processed.\nReason: ${errorReason}`;
     }
 
+    if (docId) this.pathIndex.insert(path, docId);
     this.cache.set(path, content, status);
     return errorReason
       ? { id: docId, content, status, errorReason }
@@ -473,43 +487,58 @@ export class SupermemoryVolume {
     if (this.pathIndex.isDirectory(path) && !this.pathIndex.isFile(path)) {
       return { isFile: false, isDirectory: true, size: 0, mtime: new Date(0) };
     }
-    const docId = await this.lookupDocId(path);
-    if (!docId) return null;
 
+    // Cache hit shortcut — same as getDoc.
     const cached = this.cache.get(path);
     if (cached) {
-      return {
-        id: docId,
-        isFile: true,
-        isDirectory: false,
-        size:
-          typeof cached.content === "string" ? cached.content.length : cached.content.byteLength,
-        mtime: new Date(0),
-        status: cached.status,
-      };
+      const docId = this.pathIndex.resolve(path);
+      if (docId) {
+        return {
+          id: docId,
+          isFile: true,
+          isDirectory: false,
+          size:
+            typeof cached.content === "string" ? cached.content.length : cached.content.byteLength,
+          mtime: new Date(0),
+          status: cached.status,
+        };
+      }
     }
 
+    // Cache miss → list-by-filepath. One read endpoint for everything.
     let resp: unknown;
     try {
-      resp = await this.client.documents.get(docId);
+      resp = await this.client.documents.list({
+        containerTags: [this.containerTag],
+        limit: 1,
+        page: 1,
+        includeContent: true,
+        // @ts-expect-error filepath not in DocumentListParams typing yet (wire accepts it)
+        filepath: path,
+      });
     } catch (err) {
-      const status = (err as { status?: number }).status;
-      if (status === 404) {
-        this.pathIndex.remove(path);
-        this.cache.delete(path);
-        return null;
-      }
       throw eio(`statDoc(${path}): ${(err as Error).message}`);
     }
 
-    const r = resp as { status?: string; content?: string; updatedAt?: string };
-    const status = normalizeStatus(typeof r.status === "string" ? r.status : "unknown");
+    const m = (resp as { memories?: Array<Record<string, unknown>> }).memories?.[0];
+    const fp = m && typeof m.filepath === "string" ? m.filepath : null;
+    if (!m || (fp !== null && fp !== path)) {
+      this.pathIndex.remove(path);
+      this.cache.delete(path);
+      return null;
+    }
+    const docId = typeof m.id === "string" ? m.id : "";
+    const serverStatus = typeof m.status === "string" ? m.status : "unknown";
+    const status = normalizeStatus(serverStatus);
+    const rawContent = typeof m.content === "string" ? m.content : "";
+    if (docId) this.pathIndex.insert(path, docId);
+    this.cache.set(path, rawContent, status);
     return {
       id: docId,
       isFile: true,
       isDirectory: false,
-      size: typeof r.content === "string" ? r.content.length : 0,
-      mtime: r.updatedAt ? new Date(r.updatedAt) : new Date(0),
+      size: rawContent.length,
+      mtime: typeof m.updatedAt === "string" ? new Date(m.updatedAt) : new Date(0),
       status,
     };
   }

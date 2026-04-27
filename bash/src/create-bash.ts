@@ -44,6 +44,18 @@ export interface CreateBashOptions {
   javascript?: boolean | JavaScriptConfig;
   /** just-bash logger for execution tracing. */
   logger?: BashLogger;
+  /**
+   * Cache TTL in milliseconds. Controls how long the in-memory content cache
+   * trusts itself before re-fetching from the server.
+   *   undefined → 150_000 (2.5 min, multi-writer default)
+   *   null      → never expires (single-writer; only LRU evicts)
+   *   0         → no caching (every read hits the wire)
+   *   N>0       → expire after N ms
+   *
+   * TTL only matters when external writers exist (other agent sessions, dashboard
+   * uploads, webhooks). Single-writer apps should pass `null` for max speed.
+   */
+  cacheTtlMs?: number | null;
 }
 
 export interface CreateBashResult {
@@ -73,7 +85,9 @@ export async function createBash(opts: CreateBashOptions): Promise<CreateBashRes
     apiKey: opts.apiKey,
     ...(opts.baseURL ? { baseURL: opts.baseURL } : {}),
   });
-  const volume = new SupermemoryVolume(client, opts.containerTag);
+  const volume = new SupermemoryVolume(client, opts.containerTag, {
+    cacheOptions: opts.cacheTtlMs === undefined ? undefined : { ttlMs: opts.cacheTtlMs },
+  });
   const fs = new SupermemoryFs(volume);
 
   // Mark the standard Linux layout as synthetic so ls/cd/pwd behave normally.

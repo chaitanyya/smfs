@@ -13,23 +13,33 @@ interface InternalEntry {
 }
 
 export interface SessionCacheOptions {
-  terminalTtlMs?: number;
-  inflightTtlMs?: number;
+  /**
+   * Lifetime of cache entries in milliseconds.
+   *   undefined → 150_000 (2.5 min, multi-writer default)
+   *   null      → never expires (single-writer max speed; only LRU evicts)
+   *   0         → no cache (every get returns null after a tick)
+   *   N>0       → expire after N ms
+   *
+   * Rationale: TTL is only useful when external writers exist. The default
+   * is conservative for the multi-writer case. Single-writer apps should
+   * pass `null` for max speed.
+   */
+  ttlMs?: number | null;
   maxBytes?: number;
   now?: () => number;
 }
 
+const DEFAULT_TTL_MS = 150_000;
+
 export class SessionCache {
   private entries: Map<string, InternalEntry> = new Map();
   private currentBytes = 0;
-  private readonly terminalTtlMs: number;
-  private readonly inflightTtlMs: number;
+  private readonly ttlMs: number | null;
   private readonly maxBytes: number;
   private readonly now: () => number;
 
   constructor(opts: SessionCacheOptions = {}) {
-    this.terminalTtlMs = opts.terminalTtlMs ?? 60_000;
-    this.inflightTtlMs = opts.inflightTtlMs ?? 15_000;
+    this.ttlMs = opts.ttlMs === undefined ? DEFAULT_TTL_MS : opts.ttlMs;
     this.maxBytes = opts.maxBytes ?? 50 * 1024 * 1024;
     this.now = opts.now ?? Date.now;
   }
@@ -42,6 +52,7 @@ export class SessionCache {
       this.currentBytes -= entry.bytes;
       return null;
     }
+    // LRU: re-insert to bump to most-recent.
     this.entries.delete(path);
     this.entries.set(path, entry);
     return { content: entry.content, status: entry.status };
@@ -54,13 +65,13 @@ export class SessionCache {
       this.entries.delete(path);
     }
     const bytes = byteLength(content);
-    const ttl = status === "done" || status === "failed" ? this.terminalTtlMs : this.inflightTtlMs;
-    this.entries.set(path, {
-      content,
-      status,
-      expiresAt: this.now() + ttl,
-      bytes,
-    });
+    const expiresAt =
+      this.ttlMs === null
+        ? Number.POSITIVE_INFINITY
+        : this.ttlMs === 0
+          ? this.now() // already expired; next get() returns null
+          : this.now() + this.ttlMs;
+    this.entries.set(path, { content, status, expiresAt, bytes });
     this.currentBytes += bytes;
     while (this.currentBytes > this.maxBytes && this.entries.size > 1) {
       const oldestKey = this.entries.keys().next().value;
