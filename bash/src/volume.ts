@@ -490,8 +490,7 @@ export class SupermemoryVolume {
     try {
       const body: SearchMemoriesParams & { filepath?: string } = {
         q: params.q,
-        // @ts-expect-error containerTags deprecated in SDK types but the wire still accepts it
-        containerTags: [this.containerTag],
+        containerTag: this.containerTag,
         searchMode: "hybrid",
         include: { documents: true },
         limit: 50,
