@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { FsError } from "../src/errors.js";
 import { PathIndex } from "../src/path-index.js";
 import { SessionCache } from "../src/session-cache.js";
-import { SupermemoryVolume } from "../src/volume.js";
+import { formatProfile, SupermemoryVolume } from "../src/volume.js";
 
 const fakeClient = {} as unknown as Supermemory;
 
@@ -814,5 +814,96 @@ describe("SupermemoryVolume — wire fallback on PathIndex miss (B2.13)", () => 
     await volume.listByPrefix("");
     const body = list.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(body.filepath).toBeUndefined();
+  });
+});
+
+describe("formatProfile", () => {
+  it("renders empty profile with placeholder line", () => {
+    const out = formatProfile({ profile: { static: [], dynamic: [] } });
+    expect(out).toContain("# Memory Profile");
+    expect(out).toContain("auto-generated");
+    expect(out).toContain("(no memories extracted yet");
+    expect(out).not.toContain("## Core Knowledge");
+    expect(out).not.toContain("## Recent Context");
+  });
+
+  it("renders static-only profile with Core Knowledge section", () => {
+    const out = formatProfile({
+      profile: { static: ["likes coffee", "lives in Austin"], dynamic: [] },
+    });
+    expect(out).toContain("## Core Knowledge");
+    expect(out).toContain("- likes coffee");
+    expect(out).toContain("- lives in Austin");
+    expect(out).not.toContain("## Recent Context");
+  });
+
+  it("renders dynamic-only profile with Recent Context section", () => {
+    const out = formatProfile({ profile: { static: [], dynamic: ["bought a drill press"] } });
+    expect(out).toContain("## Recent Context");
+    expect(out).toContain("- bought a drill press");
+    expect(out).not.toContain("## Core Knowledge");
+  });
+
+  it("renders both sections when both populated", () => {
+    const out = formatProfile({
+      profile: { static: ["s1"], dynamic: ["d1", "d2"] },
+    });
+    expect(out.indexOf("## Core Knowledge")).toBeLessThan(out.indexOf("## Recent Context"));
+    expect(out).toContain("- s1");
+    expect(out).toContain("- d1");
+    expect(out).toContain("- d2");
+  });
+});
+
+describe("SupermemoryVolume.fetchProfile", () => {
+  it("calls client.profile with containerTag and caches the rendered body", async () => {
+    const profile = vi.fn().mockResolvedValue({ profile: { static: ["s"], dynamic: ["d"] } });
+    const client = { profile } as unknown as Supermemory;
+    const volume = new SupermemoryVolume(client, "tag-x");
+
+    const body = await volume.fetchProfile();
+    expect(profile).toHaveBeenCalledTimes(1);
+    expect(profile).toHaveBeenCalledWith({ containerTag: "tag-x" });
+    expect(body).toContain("- s");
+    expect(body).toContain("- d");
+
+    const cached = volume.cache.get(SupermemoryVolume.PROFILE_PATH);
+    expect(cached?.content).toBe(body);
+    expect(cached?.status).toBe("done");
+  });
+
+  it("returns cached body without calling the SDK on second read", async () => {
+    const profile = vi.fn().mockResolvedValue({ profile: { static: ["s"], dynamic: [] } });
+    const client = { profile } as unknown as Supermemory;
+    const volume = new SupermemoryVolume(client, "tag-x");
+
+    const a = await volume.fetchProfile();
+    const b = await volume.fetchProfile();
+    expect(profile).toHaveBeenCalledTimes(1);
+    expect(b).toBe(a);
+  });
+
+  it("wraps SDK errors in FsError(EIO)", async () => {
+    const profile = vi.fn().mockRejectedValue(new Error("upstream down"));
+    const client = { profile } as unknown as Supermemory;
+    const volume = new SupermemoryVolume(client, "tag-x");
+
+    await expect(volume.fetchProfile()).rejects.toThrowError(FsError);
+    await expect(volume.fetchProfile()).rejects.toThrow(/EIO.*upstream down/);
+  });
+});
+
+describe("SupermemoryVolume.isReservedPath", () => {
+  it("returns true for /profile.md", () => {
+    const v = new SupermemoryVolume(fakeClient, "tag");
+    expect(v.isReservedPath("/profile.md")).toBe(true);
+  });
+
+  it("returns false for any other path", () => {
+    const v = new SupermemoryVolume(fakeClient, "tag");
+    expect(v.isReservedPath("/")).toBe(false);
+    expect(v.isReservedPath("/profile")).toBe(false);
+    expect(v.isReservedPath("/profile.md/")).toBe(false);
+    expect(v.isReservedPath("/notes/profile.md")).toBe(false);
   });
 });

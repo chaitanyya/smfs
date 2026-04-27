@@ -1,7 +1,8 @@
-import type { BashLogger, BashOptions } from "just-bash";
+import type { BashExecResult, BashLogger, BashOptions, ExecOptions } from "just-bash";
 import { Bash } from "just-bash";
 import Supermemory from "supermemory";
 import { sgrepCommand } from "./commands/sgrep.js";
+import { FsError } from "./errors.js";
 import { SupermemoryFs } from "./supermemory-fs.js";
 import { TOOL_DESCRIPTION } from "./tool-description.js";
 import { SupermemoryVolume } from "./volume.js";
@@ -69,6 +70,23 @@ export async function createBash(opts: CreateBashOptions): Promise<CreateBashRes
     ...(opts.executionLimits ? { executionLimits: opts.executionLimits } : {}),
     ...(opts.logger ? { logger: opts.logger } : {}),
   });
+
+  const origExec = bash.exec.bind(bash);
+  bash.exec = async (cmd: string, options?: ExecOptions): Promise<BashExecResult> => {
+    try {
+      return await origExec(cmd, options);
+    } catch (err) {
+      if (err instanceof FsError) {
+        return {
+          stdout: "",
+          stderr: `bash: ${err.message}\n`,
+          exitCode: 1,
+          env: bash.getEnv(),
+        };
+      }
+      throw err;
+    }
+  };
 
   return {
     bash,

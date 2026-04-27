@@ -1,6 +1,7 @@
 import type Supermemory from "supermemory";
 import type { DocumentListResponse } from "supermemory/resources/documents";
 import type { SearchMemoriesParams } from "supermemory/resources/search";
+import type { ProfileResponse } from "supermemory/resources/top-level";
 import { ebusy, eexist, efbig, eio, enoent } from "./errors.js";
 import { PathIndex } from "./path-index.js";
 import { SessionCache, type SessionCacheOptions } from "./session-cache.js";
@@ -93,6 +94,7 @@ export class SupermemoryVolume {
   private lastConfiguredPaths: string | null = null;
   private static readonly ALL_PATHS_TTL_MS = 60_000;
   private static readonly ALL_PATHS_HARD_CAP = 5000;
+  static readonly PROFILE_PATH = "/profile.md";
 
   constructor(client: Supermemory, containerTag: string, options: SupermemoryVolumeOptions = {}) {
     this.client = client;
@@ -536,6 +538,25 @@ export class SupermemoryVolume {
     return { results: out };
   }
 
+  async fetchProfile(): Promise<string> {
+    const cached = this.cache.get(SupermemoryVolume.PROFILE_PATH);
+    if (cached && typeof cached.content === "string") return cached.content;
+
+    let resp: ProfileResponse;
+    try {
+      resp = await this.client.profile({ containerTag: this.containerTag });
+    } catch (err) {
+      throw eio(`profile: ${(err as Error).message}`);
+    }
+    const body = formatProfile(resp);
+    this.cache.set(SupermemoryVolume.PROFILE_PATH, body, "done");
+    return body;
+  }
+
+  isReservedPath(path: string): boolean {
+    return path === SupermemoryVolume.PROFILE_PATH;
+  }
+
   async configureMemoryPaths(paths: string[]): Promise<void> {
     const key = JSON.stringify(paths);
     if (this.lastConfiguredPaths === key) return;
@@ -549,4 +570,28 @@ export class SupermemoryVolume {
     }
     this.lastConfiguredPaths = key;
   }
+}
+
+const PROFILE_HEADER = `# Memory Profile
+
+This file is auto-generated from your memories. To change what appears
+here, modify the source files in your folder.
+`;
+
+export function formatProfile(resp: ProfileResponse): string {
+  const staticItems = resp.profile?.static ?? [];
+  const dynamicItems = resp.profile?.dynamic ?? [];
+  if (staticItems.length === 0 && dynamicItems.length === 0) {
+    return `${PROFILE_HEADER}\n(no memories extracted yet — write some files and check back in a few minutes)\n`;
+  }
+  const parts: string[] = [PROFILE_HEADER];
+  if (staticItems.length > 0) {
+    parts.push("\n## Core Knowledge\n");
+    for (const item of staticItems) parts.push(`- ${item}\n`);
+  }
+  if (dynamicItems.length > 0) {
+    parts.push("\n## Recent Context\n");
+    for (const item of dynamicItems) parts.push(`- ${item}\n`);
+  }
+  return parts.join("");
 }
