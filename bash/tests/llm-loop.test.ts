@@ -1,23 +1,3 @@
-// LLM-driven behavioral evaluation. Seeds a container with synthetic notes
-// for a fictional engineer (Maya Patel), then drives one or more LLM
-// providers through a fixed task list using the bash tool, capturing every
-// tool call and writing a markdown report.
-//
-// COSTS REAL MONEY. Double-gated on SUPERMEMORY_API_KEY + RUN_LLM_EVAL=1.
-// Each run can issue tens of LLM calls per provider. Default `bun run test:run`
-// skips this suite entirely.
-//
-// Usage:
-//   SUPERMEMORY_API_KEY=sk-... ANTHROPIC_API_KEY=sk-ant-... RUN_LLM_EVAL=1 \
-//     bun run test:run -- tests/llm-loop.test.ts
-//
-// Providers run only if their env var is set:
-//   ANTHROPIC_API_KEY               → @ai-sdk/anthropic, claude-sonnet-4-5
-//   OPENAI_API_KEY                  → @ai-sdk/openai, gpt-4o
-//   GOOGLE_GENERATIVE_AI_API_KEY    → @ai-sdk/google, gemini-2.5-flash
-//
-// Report goes to bash/.scratch/llm-eval-report-${ISO}.md (gitignored).
-
 import { randomBytes } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -45,18 +25,18 @@ const providers: Provider[] = [];
 if (process.env.ANTHROPIC_API_KEY) {
   providers.push({
     id: "anthropic",
-    label: "claude-sonnet-4-5",
-    model: anthropic("claude-sonnet-4-5"),
+    label: "claude-sonnet-4-6",
+    model: anthropic("claude-sonnet-4-6"),
   });
 }
 if (process.env.OPENAI_API_KEY) {
-  providers.push({ id: "openai", label: "gpt-4o", model: openai("gpt-4o") });
+  providers.push({ id: "openai", label: "gpt-5.5", model: openai("gpt-5.5") });
 }
 if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
   providers.push({
     id: "google",
-    label: "gemini-2.5-flash",
-    model: google("gemini-2.5-flash"),
+    label: "gemini-3.1-pro",
+    model: google("gemini-3.1-pro"),
   });
 }
 
