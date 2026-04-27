@@ -5,7 +5,7 @@ Your Supermemory container, exposed as a filesystem. Read, write, and `grep` you
 Two ways in:
 
 - **Mount it locally** — a real directory on your machine that `ls`, VS Code, Claude Code, Cursor, and every other Unix-aware tool can read and write.
-- **Drop the virtual bash tool into your agent** — for AI agents running in Cloudflare Workers, serverless functions, or browser sandboxes, where mounting isn't an option.
+- **Plug the virtual bash tool into your agent's sandbox** — designed for AI agents running in sandboxed runtimes (Cloudflare Workers, serverless functions, browser sandboxes, container sandboxes) where a real filesystem mount isn't an option.
 
 ## Install
 
@@ -32,9 +32,9 @@ cargo build
 cargo run -- --help
 ```
 
-## `bash/` — virtual bash tool for AI agents
+## `bash/` — virtual bash tool for sandboxed AI agents
 
-A TypeScript package (`@supermemory/bash`) for AI agents running where a real mount isn't feasible. Drops a single `run_bash` tool into your agent's toolset; the agent uses every Unix command it already knows — `ls`, `cat`, `grep`, `mv`, `cp`, `find`, pipes, redirects — plus an `sgrep` command for semantic search across the whole container.
+A TypeScript package (`@supermemory/bash`) designed for AI agents running inside sandboxed environments — Cloudflare Workers, serverless functions, browser sandboxes, isolated containers — where a real filesystem mount isn't an option. Drops a single `run_bash` tool into the agent's toolset; the agent uses every Unix command it already knows — `ls`, `cat`, `grep`, `mv`, `cp`, `find`, pipes, redirects — plus an `sgrep` command for semantic search across the whole container.
 
 ```ts
 import { createBash } from "@supermemory/bash";
