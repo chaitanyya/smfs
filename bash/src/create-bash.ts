@@ -1,10 +1,4 @@
-import type {
-  BashLogger,
-  BashOptions,
-  CustomCommand,
-  JavaScriptConfig,
-  NetworkConfig,
-} from "just-bash";
+import type { BashLogger, BashOptions } from "just-bash";
 import { Bash } from "just-bash";
 import Supermemory from "supermemory";
 import { sgrepCommand } from "./commands/sgrep.js";
@@ -26,13 +20,6 @@ export interface CreateBashOptions {
   cwd?: string;
   env?: Record<string, string>;
   executionLimits?: ExecutionLimits;
-  /** Custom commands appended after sgrep. */
-  customCommands?: CustomCommand[];
-  network?: NetworkConfig;
-  /** Enable python3 (off by default). */
-  python?: boolean;
-  /** Enable js-exec (off by default). */
-  javascript?: boolean | JavaScriptConfig;
   logger?: BashLogger;
   /**
    * Content-cache TTL in ms.
@@ -83,15 +70,12 @@ export async function createBash(opts: CreateBashOptions): Promise<CreateBashRes
 
   const bash = new Bash({
     fs,
-    customCommands: [sgrepCommand, ...(opts.customCommands ?? [])],
+    customCommands: [sgrepCommand],
     cwd: opts.cwd ?? "/home/user",
     env,
     // just-bash's defense-in-depth patches setTimeout, which the Supermemory SDK uses for retries.
     defenseInDepth: false,
     ...(opts.executionLimits ? { executionLimits: opts.executionLimits } : {}),
-    ...(opts.network ? { network: opts.network } : {}),
-    ...(opts.python !== undefined ? { python: opts.python } : {}),
-    ...(opts.javascript !== undefined ? { javascript: opts.javascript } : {}),
     ...(opts.logger ? { logger: opts.logger } : {}),
   });
 
