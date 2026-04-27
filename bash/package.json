@@ -2,6 +2,23 @@
   "name": "@supermemory/bash",
   "version": "0.0.1",
   "description": "Virtual bash environment for AI agents, backed by Supermemory.",
+  "license": "MIT",
+  "homepage": "https://github.com/supermemoryai/smfs/tree/main/bash#readme",
+  "bugs": "https://github.com/supermemoryai/smfs/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/supermemoryai/smfs.git",
+    "directory": "bash"
+  },
+  "keywords": [
+    "bash",
+    "supermemory",
+    "ai",
+    "agent",
+    "filesystem",
+    "tool-use",
+    "llm"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -10,8 +27,12 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
@@ -19,7 +40,8 @@
     "test:run": "vitest run",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "bun run clean && bun run typecheck && bun run lint && bun run test:run && bun run build"
   },
   "peerDependencies": {
     "just-bash": "^2.14.0",
