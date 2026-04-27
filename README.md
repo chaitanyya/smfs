@@ -1,4 +1,4 @@
-# supermemoryfs
+# smfs
 
 Your Supermemory container, exposed as a filesystem. Read, write, and `grep` your memory like any local directory.
 
@@ -104,16 +104,23 @@ Run `smfs --help` or `smfs <command> --help` for full flag listings.
 --api-url <URL>          override the API base URL
 ```
 
-## Semantic search
+## Semantic search via plain `grep`
 
-`smfs grep "query"` runs a semantic search across the container's memories. Inside a mount it auto-detects the container tag from a hidden `.smfs` marker; outside, pass `--tag`.
+Run `smfs init` once. After that, `grep` inside any mount routes through Supermemory's semantic index automatically when called without flags. No new command to learn, no new tool to teach an agent.
 
 ```sh
-smfs grep "OAuth refresh tokens"
-smfs grep "design review notes" /work/
+cd agent_memory/
+
+grep "OAuth refresh tokens"          # semantic: finds files about the topic
+grep "design review notes" work/     # semantic, scoped to a directory
+
+grep -F "exact string" notes.md      # any flag falls through to real grep
+grep -rF "literal" .                 # also real grep (literal substring)
 ```
 
-`smfs init` installs a shell wrapper that makes `grep` inside a mount transparently route to semantic search when no flags are passed; `grep -F` and friends still hit the regular literal-string `grep`.
+The wrapper detects when your shell is inside an smfs mount via a hidden `.smfs` marker. Outside a mount, `grep` is unchanged. Inside a mount, flagless `grep` is semantic and flagged `grep` is literal: that split is the whole UX.
+
+If you need to run a semantic search from outside a mount, `smfs grep "query" --tag <container_tag>` does the same thing without the wrapper.
 
 ## `bash/` virtual bash tool
 
@@ -144,4 +151,4 @@ Requires Rust 1.80 or newer.
 
 ## License
 
-MIT OR Apache-2.0
+MIT. See [`LICENSE`](LICENSE).
