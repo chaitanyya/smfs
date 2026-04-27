@@ -123,9 +123,8 @@ createBash({
   cacheTtlMs?: number | null,   // default: 150_000 (2.5 min). null = never expires (single-writer). 0 = no cache.
   cwd?: string,                 // default: "/home/user"
   env?: Record<string, string>,
-  network?: NetworkConfig,      // pass-through to just-bash for curl/wget allowlist
-  python?: boolean,             // enable python3
-  javascript?: boolean,         // enable js-exec
+  executionLimits?: ExecutionLimits,  // pass-through to just-bash
+  logger?: BashLogger,                // pass-through to just-bash
 });
 ```
 
