@@ -16,8 +16,6 @@ export interface CreateBashOptions {
   eagerLoad?: boolean;
   /** Also warm content cache during eager load. Default true. Set false for huge containers. */
   eagerContent?: boolean;
-  /** Default cwd for the bash session. Default "/home/user". */
-  cwd?: string;
   env?: Record<string, string>;
   executionLimits?: ExecutionLimits;
   logger?: BashLogger;
@@ -39,11 +37,6 @@ export interface CreateBashResult {
   refresh: () => Promise<void>;
 }
 
-// Excludes /bin, /usr/bin, /usr, /proc/* on purpose: if /usr/bin exists,
-// just-bash's command resolver sees it and refuses to fall through to
-// customCommands (sgrep returns 127).
-const SYNTHETIC_LAYOUT = ["/home", "/home/user", "/tmp", "/dev"];
-
 export async function createBash(opts: CreateBashOptions): Promise<CreateBashResult> {
   const client = new Supermemory({
     apiKey: opts.apiKey,
@@ -53,8 +46,6 @@ export async function createBash(opts: CreateBashOptions): Promise<CreateBashRes
     cacheOptions: opts.cacheTtlMs === undefined ? undefined : { ttlMs: opts.cacheTtlMs },
   });
   const fs = new SupermemoryFs(volume);
-
-  for (const dir of SYNTHETIC_LAYOUT) volume.markSyntheticDir(dir);
 
   const doWarm = async () => {
     await volume.listByPrefix("/", { withContent: opts.eagerContent ?? true });
@@ -71,7 +62,7 @@ export async function createBash(opts: CreateBashOptions): Promise<CreateBashRes
   const bash = new Bash({
     fs,
     customCommands: [sgrepCommand],
-    cwd: opts.cwd ?? "/home/user",
+    cwd: "/",
     env,
     // just-bash's defense-in-depth patches setTimeout, which the Supermemory SDK uses for retries.
     defenseInDepth: false,
