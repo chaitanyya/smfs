@@ -39,50 +39,78 @@ console.log(r3.stdout);
 
 ## Hand the bash tool to your LLM
 
-`createBash` returns a `toolDescription` string ready to drop into your tool schema. The agent gets:
+The package ships an opinionated tool description (sgrep guidance, persistence semantics, eventual-consistency notes, what's not supported) so the agent doesn't have to discover any of that on its own. Use it as the `description` field on your tool schema.
+
+Two ways to access it — both are the same string:
+
+```typescript
+// (a) destructure from createBash's return value
+import { createBash } from "@supermemory/bash";
+const { bash, toolDescription } = await createBash({ apiKey, containerTag });
+
+// (b) import the constant directly
+import { createBash, TOOL_DESCRIPTION } from "@supermemory/bash";
+const { bash } = await createBash({ apiKey, containerTag });
+// then use TOOL_DESCRIPTION wherever you need it
+```
+
+The agent gets:
 
 - All standard shell commands: `cat`, `ls`, `mkdir`, `rm`, `mv`, `cp`, `grep`, `head`, `tail`, `wc`, `sed`, `awk`, pipes, redirects, conditionals, loops.
 - A custom `sgrep` command for semantic search across every file in the container.
 - Files persist: writes are durable, reads work across sessions.
 
-### Anthropic tool-use
-
-```typescript
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
-const response = await anthropic.messages.create({
-  model: "claude-3-7-sonnet-latest",
-  max_tokens: 4096,
-  tools: [{
-    name: "bash",
-    description: toolDescription,
-    input_schema: { type: "object", properties: { cmd: { type: "string" } }, required: ["cmd"] },
-  }],
-  messages: [{ role: "user", content: "Find my notes about authentication and summarize." }],
-});
-
-// In your tool-use loop, call bash.exec(cmd) and feed the result back.
-```
-
 ### Vercel AI SDK
 
 ```typescript
 import { generateText, tool } from "ai";
+import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
+import { createBash, TOOL_DESCRIPTION } from "@supermemory/bash";
+
+const { bash } = await createBash({
+  apiKey: process.env.SUPERMEMORY_API_KEY!,
+  containerTag: "user_42",
+});
 
 const result = await generateText({
   model: openai("gpt-4o"),
   prompt: "Search my notes for authentication.",
   tools: {
     bash: tool({
-      description: toolDescription,
+      description: TOOL_DESCRIPTION,
       inputSchema: z.object({ cmd: z.string() }),
       execute: async ({ cmd }) => bash.exec(cmd),
     }),
   },
   maxSteps: 8,
 });
+```
+
+### Anthropic tool-use
+
+```typescript
+import Anthropic from "@anthropic-ai/sdk";
+import { createBash, TOOL_DESCRIPTION } from "@supermemory/bash";
+
+const { bash } = await createBash({
+  apiKey: process.env.SUPERMEMORY_API_KEY!,
+  containerTag: "user_42",
+});
+
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+const response = await client.messages.create({
+  model: "claude-sonnet-4-6",
+  max_tokens: 4096,
+  tools: [{
+    name: "bash",
+    description: TOOL_DESCRIPTION,
+    input_schema: { type: "object", properties: { cmd: { type: "string" } }, required: ["cmd"] },
+  }],
+  messages: [{ role: "user", content: "Find my notes about authentication and summarize." }],
+});
+
+// In your tool-use loop, call bash.exec(cmd) and feed the result back.
 ```
 
 ## Options
