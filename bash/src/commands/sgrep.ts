@@ -19,35 +19,32 @@ const HELP =
   "              with PATH if it ends with '/'). Positional or via -p.\n" +
   "  --help      Show this help.\n";
 
-function looksLikePath(s: string): boolean {
-  return s.startsWith("/");
-}
-
 export function parseSgrepArgs(argv: string[]): SgrepArgs | { error: string } {
   const out: SgrepArgs = { query: "", filepath: undefined, help: false };
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--help" || a === "-h") out.help = true;
-    else if (a === "-p") {
+    if (a === undefined) continue;
+    if (a === "--help" || a === "-h") {
+      out.help = true;
+    } else if (a === "-p") {
       const next = argv[i + 1];
       if (next === undefined) return { error: "sgrep: -p requires an argument" };
       out.filepath = next;
       i++;
-    } else if (a !== undefined && a.startsWith("-")) {
+    } else if (a.startsWith("-")) {
       return { error: `sgrep: unknown flag '${a}'` };
-    } else if (a !== undefined) {
+    } else {
       positional.push(a);
     }
   }
   if (out.help) return out;
   if (positional.length === 0) return { error: "sgrep: missing QUERY (try --help)" };
 
-  // Grep-style positional path: `sgrep "term" /notes/` — last positional
-  // starting with "/" is treated as the path scope, unless -p was already set.
+  // `sgrep "term" /notes/` — last absolute-path positional is the scope.
   if (out.filepath === undefined && positional.length >= 2) {
     const last = positional[positional.length - 1];
-    if (last && looksLikePath(last)) {
+    if (last?.startsWith("/")) {
       out.filepath = last;
       positional.pop();
     }
@@ -62,19 +59,12 @@ function escapeForOneLine(s: string): string {
 
 export function formatSgrepOutput(results: SearchResult[]): string {
   if (results.length === 0) return "";
-  // Match smfs `smfs grep` output (crates/smfs/src/cmd/grep.rs:175-194):
-  // one line per match, `filepath:content` with newlines escaped so each
-  // match stays on a single line. Prefer `memory` (smfs's preferred field)
-  // over `chunk`. Blank line between matches.
   const lines: string[] = [];
   for (const r of results) {
     const fp = r.filepath ?? "(unknown)";
-    const content =
-      typeof r.memory === "string" && r.memory.length > 0
-        ? r.memory
-        : typeof r.chunk === "string"
-          ? r.chunk
-          : "";
+    let content = "";
+    if (typeof r.memory === "string" && r.memory.length > 0) content = r.memory;
+    else if (typeof r.chunk === "string") content = r.chunk;
     if (content.length === 0) continue;
     lines.push(`${fp}:${escapeForOneLine(content)}`);
   }
@@ -90,8 +80,7 @@ export const sgrepCommand = defineCommand("sgrep", async (argv, ctx) => {
     return { stdout: HELP, stderr: "", exitCode: 0 };
   }
 
-  // ctx.fs is opaque IFileSystem; we need our SupermemoryFs to reach the volume.
-  const fs = ctx.fs as unknown as Partial<SupermemoryFs>;
+  const fs = ctx.fs as Partial<SupermemoryFs>;
   if (!fs.volume) {
     return {
       stdout: "",

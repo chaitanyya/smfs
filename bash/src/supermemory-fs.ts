@@ -10,8 +10,7 @@ import type {
 import { eexist, eio, eisdir, enoent, enosys, enotdir, enotempty, FsError } from "./errors.js";
 import type { SupermemoryVolume } from "./volume.js";
 
-// Mirrored from just-bash/fs/interface.ts — not publicly re-exported there.
-// Structural compatibility is sufficient for `implements IFileSystem`.
+// Mirrored from just-bash/fs/interface.ts — not re-exported there.
 interface ReadFileOptions {
   encoding?: BufferEncoding | null;
 }
@@ -38,8 +37,6 @@ function normalizePath(input: string): string {
 
 export class SupermemoryFs implements IFileSystem {
   constructor(public readonly volume: SupermemoryVolume) {}
-
-  // --- B3: read path ---
 
   resolvePath(base: string, path: string): string {
     const absolute = path.startsWith("/") ? path : `${base.replace(/\/$/, "")}/${path}`;
@@ -129,9 +126,7 @@ export class SupermemoryFs implements IFileSystem {
         existing.isFile = false;
       }
     }
-    // Synthetic dirs that are direct children of `norm` should show up too.
-    // Without this, `ls /` on a container that has only synthetic dirs (the
-    // standard layout createBash seeds) returns empty.
+    // Without this, `ls /` on a fresh container (synthetic dirs only) is empty.
     for (const synth of this.volume.pathIndex.syntheticDirPaths()) {
       if (!synth.startsWith(prefix)) continue;
       const rest = synth.slice(prefix.length);
@@ -150,8 +145,6 @@ export class SupermemoryFs implements IFileSystem {
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
-
-  // --- B4: write path ---
 
   async writeFile(
     path: string,
@@ -177,11 +170,13 @@ export class SupermemoryFs implements IFileSystem {
       throw eisdir(norm);
     }
     const existing = await this.volume.getDoc(norm);
-    const head = existing
-      ? typeof existing.content === "string"
-        ? existing.content
-        : new TextDecoder().decode(existing.content)
-      : "";
+    let head = "";
+    if (existing) {
+      head =
+        typeof existing.content === "string"
+          ? existing.content
+          : new TextDecoder().decode(existing.content);
+    }
     const tail =
       typeof content === "string" ? content : new TextDecoder().decode(content as Uint8Array);
     await this.volume.addDoc(norm, head + tail);
@@ -256,13 +251,9 @@ export class SupermemoryFs implements IFileSystem {
     const destPrefix = destDir.endsWith("/") ? destDir : `${destDir}/`;
     const entries = await this.volume.listByPrefix(srcPrefix);
     if (entries.length === 0) {
-      // empty dir — just move synthetic flag
-      if (this.volume.pathIndex.isDirectory(srcDir)) {
-        this.volume.pathIndex.removeSyntheticDir(srcDir);
-        this.volume.markSyntheticDir(destDir);
-      } else {
-        throw enoent(srcDir);
-      }
+      if (!this.volume.pathIndex.isDirectory(srcDir)) throw enoent(srcDir);
+      this.volume.pathIndex.removeSyntheticDir(srcDir);
+      this.volume.markSyntheticDir(destDir);
       return;
     }
     const errors: Error[] = [];
@@ -328,8 +319,6 @@ export class SupermemoryFs implements IFileSystem {
     }
   }
 
-  // --- not supported (Supermemory has no permission/symlink model) ---
-
   async chmod(_path: string, _mode: number): Promise<void> {
     throw enosys("chmod");
   }
@@ -350,22 +339,10 @@ export class SupermemoryFs implements IFileSystem {
     throw enosys("readlink");
   }
 
-  // --- B5: glob expansion ---
-
-  /**
-   * Sync inventory used by just-bash for ls and glob expansion. Returns:
-   *   1. file paths from the volume's cached path list
-   *   2. all ancestor directory paths (so `ls /notes/` finds /notes)
-   *   3. synthetic dirs marked via markSyntheticDir (so `ls /` shows the
-   *      standard Linux-y layout createBash seeds — /home, /tmp, /dev — even
-   *      on an empty container)
-   * Populated by `listAllPaths` or the eager load `createBash` runs at
-   * construction; reflects synthetic dirs immediately.
-   */
+  /** Sync inventory used by just-bash for ls and glob expansion. */
   getAllPaths(): string[] {
     const paths = new Set<string>();
-    // Root must be present so just-bash's `ls /` resolves; InMemoryFs does
-    // the same (`getAllPaths()` returns ["/", ...]).
+    // Root must be present so `ls /` resolves (matches InMemoryFs).
     paths.add("/");
     for (const p of this.volume.cachedAllPaths()) {
       paths.add(p);

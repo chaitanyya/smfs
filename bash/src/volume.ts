@@ -1,8 +1,18 @@
 import type Supermemory from "supermemory";
+import type { DocumentListResponse } from "supermemory/resources/documents";
 import type { SearchMemoriesParams } from "supermemory/resources/search";
 import { ebusy, eexist, efbig, eio, enoent } from "./errors.js";
 import { PathIndex } from "./path-index.js";
 import { SessionCache, type SessionCacheOptions } from "./session-cache.js";
+
+// SDK's Memory type omits `filepath` and the per-status error fields.
+type MemoryWithPath = DocumentListResponse.Memory & {
+  filepath?: string;
+  errorMessage?: string;
+  errorReason?: string;
+  error?: string;
+  failureReason?: string;
+};
 
 function normalizeStatus(s: string): DocStatus {
   if (s === "done") return "done";
@@ -10,24 +20,13 @@ function normalizeStatus(s: string): DocStatus {
   return "processing";
 }
 
-// Three states the agent actually acts on. Volume maps any non-done/non-failed
-// server status to "processing" so SDK additions don't break our types.
 export type DocStatus = "done" | "failed" | "processing";
 
 export interface DocResult {
   id: string;
-  /**
-   * The bytes/string the agent gets back from `cat`. For each status:
-   *   - "done"       : the doc's actual content (extracted text for binaries, raw text otherwise).
-   *   - "failed"     : a structured failure blurb prefixed with `[supermemory.error: processing-failed]`
-   *                    so pipelines can detect failure without false positives.
-   *   - "processing" : whatever's available so far (often empty or partial).
-   */
   content: string | Uint8Array;
   status: DocStatus;
-  /** Present when status === "failed". Raw reason from the ingestion pipeline; content already includes a formatted version. */
   errorReason?: string;
-  /** True when the doc came from the virtual-files registry (e.g., /profile.md). */
   virtual?: boolean;
 }
 
@@ -37,7 +36,6 @@ export interface DocSummary {
   status: DocStatus;
   size: number;
   mtime: Date;
-  /** Present when listByPrefix was called with withContent: true. */
   content?: string;
 }
 
@@ -86,10 +84,6 @@ export interface SupermemoryVolumeOptions {
   cacheOptions?: SessionCacheOptions;
 }
 
-/**
- * The domain layer between SupermemoryFs and the Supermemory SDK. Owns the
- * PathIndex (filepath ↔ docId) and SessionCache (TTL + LRU).
- */
 export class SupermemoryVolume {
   readonly client: Supermemory;
   readonly containerTag: string;
@@ -109,29 +103,27 @@ export class SupermemoryVolume {
 
   private async *iterContainer(
     opts: { filepath?: string; includeContent?: boolean } = {},
-  ): AsyncIterable<unknown> {
+  ): AsyncIterable<MemoryWithPath> {
     let page = 1;
     const includeContent = opts.includeContent ?? false;
     while (true) {
-      const resp = await this.client.documents.list({
+      const params: Record<string, unknown> = {
         containerTags: [this.containerTag],
         limit: 100,
         page,
         includeContent,
-        ...(opts.filepath !== undefined ? { filepath: opts.filepath } : {}),
-      } as unknown as Parameters<typeof this.client.documents.list>[0]);
-      for (const m of resp.memories ?? []) yield m;
+      };
+      if (opts.filepath !== undefined) params.filepath = opts.filepath;
+      const resp = await this.client.documents.list(
+        params as Parameters<typeof this.client.documents.list>[0],
+      );
+      for (const m of resp.memories ?? []) yield m as MemoryWithPath;
       const total = resp.pagination?.totalPages ?? 1;
       if (page >= total) break;
       page++;
     }
   }
 
-  /**
-   * Resolve a path to a docId. PathIndex first; on miss, one targeted call to
-   * `documents.list` with exact-match filepath. Folds the result into PathIndex.
-   * Returns null only when both PathIndex and the wire say "no such doc".
-   */
   private async lookupDocId(path: string): Promise<string | null> {
     const cached = this.pathIndex.resolve(path);
     if (cached) return cached;
@@ -143,10 +135,9 @@ export class SupermemoryVolume {
         // @ts-expect-error filepath not in DocumentListParams typing yet (wire accepts it; exact match without trailing slash)
         filepath: path,
       });
-      const m = resp.memories?.[0];
+      const m = resp.memories?.[0] as MemoryWithPath | undefined;
       if (!m) return null;
-      const fp = (m as unknown as { filepath?: string }).filepath;
-      if (typeof fp === "string" && fp === path) {
+      if (m.filepath === path) {
         this.pathIndex.insert(path, m.id);
         return m.id;
       }
@@ -156,20 +147,11 @@ export class SupermemoryVolume {
     }
   }
 
-  /**
-   * Map a caller-supplied prefix to the value we should ship as `filepath` to
-   * the list endpoint. Empty string → omit (full container including
-   * filepath-less docs). Trailing slash → server prefix-LIKE. No trailing slash
-   * → exact match (per backend); we usually want LIKE so we add a slash unless
-   * caller explicitly asked for exact.
-   */
   private filterArgFor(prefix: string, exact: boolean): string | undefined {
     if (prefix === "") return undefined;
     if (exact) return prefix;
     return prefix.endsWith("/") ? prefix : `${prefix}/`;
   }
-
-  // --- document CRUD ---
 
   async addDoc(
     path: string,
@@ -191,9 +173,8 @@ export class SupermemoryVolume {
           // @ts-expect-error filepath not in DocumentUpdateParams typing yet
           filepath: path,
         });
-        const r = resp as unknown as { id?: string; status?: string };
-        id = r.id ?? existing;
-        serverStatus = r.status ?? "unknown";
+        id = resp.id ?? existing;
+        serverStatus = resp.status ?? "unknown";
       } else {
         const resp = await this.client.documents.add({
           content,
@@ -225,62 +206,46 @@ export class SupermemoryVolume {
   }
 
   async getDoc(path: string): Promise<DocResult | null> {
-    // Cache is path-keyed and authoritative for self-writes; if we have a
-    // hit we never need to confirm with the wire.
     const cachedFast = this.cache.get(path);
     if (cachedFast) {
       const docId = this.pathIndex.resolve(path);
       if (docId) return { id: docId, content: cachedFast.content, status: cachedFast.status };
     }
 
-    // Cache miss → list-by-filepath. One endpoint for every read fallback
-    // (lookupDocId, getDoc, statDoc all converge here). Returns latest
-    // server state by definition; we don't need a separate get-by-id.
-    let resp: unknown;
+    let resp: { memories?: MemoryWithPath[] };
     try {
       resp = await this.client.documents.list({
         containerTags: [this.containerTag],
         limit: 1,
         page: 1,
         includeContent: true,
-        // @ts-expect-error filepath not in DocumentListParams typing yet (wire accepts it; exact match without trailing slash)
+        // @ts-expect-error filepath not in DocumentListParams typing yet (wire accepts it)
         filepath: path,
       });
     } catch (err) {
       throw eio(`getDoc(${path}): ${(err as Error).message}`);
     }
 
-    const m = (resp as { memories?: Array<Record<string, unknown>> }).memories?.[0];
-    // Server confirms the doc doesn't exist OR returned a memory that doesn't
-    // match the requested filepath (defensive against stale-listing weirdness).
-    const fp = m && typeof m.filepath === "string" ? m.filepath : null;
-    if (!m || (fp !== null && fp !== path)) {
+    const m = resp.memories?.[0];
+    // Server may echo a non-matching filepath on stale listings — treat as not-found.
+    if (!m || (m.filepath !== undefined && m.filepath !== path)) {
       this.pathIndex.remove(path);
       this.cache.delete(path);
       return null;
     }
-    const docId = typeof m.id === "string" ? m.id : "";
-    const serverStatus = typeof m.status === "string" ? m.status : "unknown";
-    const status = normalizeStatus(serverStatus);
-    const rawContent = typeof m.content === "string" ? m.content : "";
+    const status = normalizeStatus(m.status ?? "unknown");
+    const rawContent = m.content ?? "";
 
     let content: string = rawContent;
     let errorReason: string | undefined;
     if (status === "failed") {
-      errorReason =
-        (typeof m.errorMessage === "string" && m.errorMessage) ||
-        (typeof m.errorReason === "string" && m.errorReason) ||
-        (typeof m.error === "string" && m.error) ||
-        (typeof m.failureReason === "string" && m.failureReason) ||
-        "(unknown)";
+      errorReason = m.errorMessage || m.errorReason || m.error || m.failureReason || "(unknown)";
       content = `[supermemory.error: processing-failed]\n\nThis document could not be processed.\nReason: ${errorReason}`;
     }
 
-    if (docId) this.pathIndex.insert(path, docId);
+    if (m.id) this.pathIndex.insert(path, m.id);
     this.cache.set(path, content, status);
-    return errorReason
-      ? { id: docId, content, status, errorReason }
-      : { id: docId, content, status };
+    return errorReason ? { id: m.id, content, status, errorReason } : { id: m.id, content, status };
   }
 
   async removeDoc(path: string): Promise<void> {
@@ -307,9 +272,7 @@ export class SupermemoryVolume {
   async removeByPrefix(prefix: string): Promise<RemoveByPrefixResult> {
     const filterArg = this.filterArgFor(prefix, false);
     if (filterArg === undefined) {
-      // Empty prefix — server-side filepath omission would target every doc
-      // including filepath-NULL ones. Iterate to match only filepath-having
-      // docs we can model.
+      // Empty prefix would also wipe filepath-NULL docs; iterate so we only touch the ones we model.
       return this.removeByPrefixViaList(prefix);
     }
 
@@ -330,8 +293,6 @@ export class SupermemoryVolume {
       return { deleted, errors };
     }
 
-    // Evict matching paths from local state. We don't get the affected IDs
-    // back from the server, so walk PathIndex by prefix.
     for (const p of this.pathIndex.paths()) {
       if (p.startsWith(prefix)) {
         this.pathIndex.remove(p);
@@ -343,14 +304,10 @@ export class SupermemoryVolume {
   }
 
   private async removeByPrefixViaList(prefix: string): Promise<RemoveByPrefixResult> {
-    // Fallback path: paginate, gather ids, deleteBulk by ids in batches of 100.
-    // Used only when prefix is empty/root (server-side filepath would behave
-    // differently for filepath-NULL docs).
     const matches: Array<{ id: string; filepath: string }> = [];
     for await (const m of this.iterContainer({ includeContent: false })) {
-      const r = m as { id: string; filepath?: string };
-      if (typeof r.filepath === "string" && r.filepath.startsWith(prefix)) {
-        matches.push({ id: r.id, filepath: r.filepath });
+      if (typeof m.filepath === "string" && m.filepath.startsWith(prefix)) {
+        matches.push({ id: m.id, filepath: m.filepath });
       }
     }
     if (matches.length === 0) return { deleted: 0, errors: [] };
@@ -388,10 +345,7 @@ export class SupermemoryVolume {
     if (!docId) throw enoent(from);
     if (await this.lookupDocId(to)) throw eexist(to);
 
-    // PATCH with filepath ONLY (no content) updates filepath server-side.
-    // Verified by B4.0 wire probe and matches smfs's rename mechanism
-    // (smfs/sync/push.rs:313-318). When `content` is included on PATCH the
-    // wire silently ignores filepath; without content it honors filepath.
+    // PATCH with filepath only (no content) renames; PATCH with content silently ignores filepath.
     try {
       await this.client.documents.update(docId, {
         containerTag: this.containerTag,
@@ -409,7 +363,6 @@ export class SupermemoryVolume {
       throw eio(`moveDoc(${from} → ${to}): ${(err as Error).message}`);
     }
 
-    // Move local state — docId stays stable.
     const cached = this.cache.get(from);
     this.pathIndex.remove(from);
     this.pathIndex.insert(to, docId);
@@ -419,8 +372,6 @@ export class SupermemoryVolume {
     }
   }
 
-  // --- listing & stat ---
-
   async listByPrefix(prefix: string, opts: ListByPrefixOpts = {}): Promise<DocSummary[]> {
     const out: DocSummary[] = [];
     const limit = opts.limit ?? Infinity;
@@ -429,30 +380,23 @@ export class SupermemoryVolume {
       filepath: filterArg,
       includeContent: opts.withContent ?? false,
     })) {
-      const r = m as {
-        id: string;
-        filepath?: string;
-        status?: string;
-        content?: string;
-        updatedAt?: string;
-      };
-      if (typeof r.filepath !== "string") continue;
-      const matches = opts.exact ? r.filepath === prefix : r.filepath.startsWith(prefix);
+      if (typeof m.filepath !== "string") continue;
+      const matches = opts.exact ? m.filepath === prefix : m.filepath.startsWith(prefix);
       if (!matches) continue;
-      const status = normalizeStatus(typeof r.status === "string" ? r.status : "unknown");
-      const content = typeof r.content === "string" ? r.content : undefined;
+      const status = normalizeStatus(m.status ?? "unknown");
+      const content = typeof m.content === "string" ? m.content : undefined;
       const summary: DocSummary = {
-        id: r.id,
-        filepath: r.filepath,
+        id: m.id,
+        filepath: m.filepath,
         status,
         size: content?.length ?? 0,
-        mtime: r.updatedAt ? new Date(r.updatedAt) : new Date(0),
+        mtime: m.updatedAt ? new Date(m.updatedAt) : new Date(0),
         ...(content !== undefined ? { content } : {}),
       };
       out.push(summary);
-      this.pathIndex.insert(r.filepath, r.id);
+      this.pathIndex.insert(m.filepath, m.id);
       if (opts.withContent && content !== undefined) {
-        this.cache.set(r.filepath, content, status);
+        this.cache.set(m.filepath, content, status);
       }
       if (out.length >= limit) break;
     }
@@ -462,10 +406,9 @@ export class SupermemoryVolume {
   async listAllPaths(): Promise<string[]> {
     const paths: string[] = [];
     for await (const m of this.iterContainer({ includeContent: false })) {
-      const r = m as { id: string; filepath?: string };
-      if (typeof r.filepath !== "string") continue;
-      paths.push(r.filepath);
-      this.pathIndex.insert(r.filepath, r.id);
+      if (typeof m.filepath !== "string") continue;
+      paths.push(m.filepath);
+      this.pathIndex.insert(m.filepath, m.id);
       if (paths.length > SupermemoryVolume.ALL_PATHS_HARD_CAP) {
         throw eio(
           `listAllPaths exceeded ${SupermemoryVolume.ALL_PATHS_HARD_CAP} docs in container '${this.containerTag}'`,
@@ -488,7 +431,6 @@ export class SupermemoryVolume {
       return { isFile: false, isDirectory: true, size: 0, mtime: new Date(0) };
     }
 
-    // Cache hit shortcut — same as getDoc.
     const cached = this.cache.get(path);
     if (cached) {
       const docId = this.pathIndex.resolve(path);
@@ -505,8 +447,7 @@ export class SupermemoryVolume {
       }
     }
 
-    // Cache miss → list-by-filepath. One read endpoint for everything.
-    let resp: unknown;
+    let resp: { memories?: MemoryWithPath[] };
     try {
       resp = await this.client.documents.list({
         containerTags: [this.containerTag],
@@ -520,25 +461,22 @@ export class SupermemoryVolume {
       throw eio(`statDoc(${path}): ${(err as Error).message}`);
     }
 
-    const m = (resp as { memories?: Array<Record<string, unknown>> }).memories?.[0];
-    const fp = m && typeof m.filepath === "string" ? m.filepath : null;
-    if (!m || (fp !== null && fp !== path)) {
+    const m = resp.memories?.[0];
+    if (!m || (m.filepath !== undefined && m.filepath !== path)) {
       this.pathIndex.remove(path);
       this.cache.delete(path);
       return null;
     }
-    const docId = typeof m.id === "string" ? m.id : "";
-    const serverStatus = typeof m.status === "string" ? m.status : "unknown";
-    const status = normalizeStatus(serverStatus);
-    const rawContent = typeof m.content === "string" ? m.content : "";
-    if (docId) this.pathIndex.insert(path, docId);
+    const status = normalizeStatus(m.status ?? "unknown");
+    const rawContent = m.content ?? "";
+    if (m.id) this.pathIndex.insert(path, m.id);
     this.cache.set(path, rawContent, status);
     return {
-      id: docId,
+      id: m.id,
       isFile: true,
       isDirectory: false,
       size: rawContent.length,
-      mtime: typeof m.updatedAt === "string" ? new Date(m.updatedAt) : new Date(0),
+      mtime: m.updatedAt ? new Date(m.updatedAt) : new Date(0),
       status,
     };
   }
@@ -547,13 +485,8 @@ export class SupermemoryVolume {
     this.pathIndex.markSyntheticDir(path);
   }
 
-  // --- search ---
-
   async search(params: SearchParams): Promise<SearchResp> {
-    // Hybrid mode against POST /v4/search — matches smfs's `smfs grep`.
-    // Returns memory results (with `memory` field) and/or chunk results
-    // (with `chunk` field) depending on what scored highest.
-    let resp: unknown;
+    let resp: { results?: unknown[] };
     try {
       const body: SearchMemoriesParams & { filepath?: string } = {
         q: params.q,
@@ -570,8 +503,7 @@ export class SupermemoryVolume {
     }
 
     const out: SearchResult[] = [];
-    const results = (resp as { results?: unknown[] }).results ?? [];
-    for (const r of results) {
+    for (const r of resp.results ?? []) {
       const rec = r as {
         id: string;
         memory?: string;
@@ -581,9 +513,7 @@ export class SupermemoryVolume {
         documents?: Array<{ id?: string; documentId?: string }>;
       };
       const docId = rec.documents?.[0]?.id ?? rec.documents?.[0]?.documentId ?? rec.id;
-      // Source filepath: prefer the result-level field; fall back to PathIndex
-      // reverse-lookup against the source doc id (handles old containers where
-      // the wire returns null filepath but PathIndex knows it).
+      // Old containers return a null filepath; reverse-lookup via PathIndex covers that.
       const filepath =
         (typeof rec.filepath === "string" ? rec.filepath : undefined) ??
         (docId ? (this.pathIndex.findPath(docId) ?? undefined) : undefined);
@@ -606,8 +536,6 @@ export class SupermemoryVolume {
     }
     return { results: out };
   }
-
-  // --- container-tag config ---
 
   async configureMemoryPaths(paths: string[]): Promise<void> {
     const key = JSON.stringify(paths);

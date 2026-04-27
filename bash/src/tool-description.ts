@@ -1,6 +1,3 @@
-// LLM-facing description of the bash tool. Pass this string into your
-// agent's system prompt or tool schema so the model knows what it's wielding.
-
 export const TOOL_DESCRIPTION = `You have access to a bash environment whose filesystem is your Supermemory container. Files you write here persist across sessions and are searchable by the rest of your tooling.
 
 Default working directory: /home/user. Common Linux dirs (/home, /tmp, /usr, /bin, /dev, /proc) exist as conventions but are mostly empty. Your own files can live anywhere — typically /notes/, /work/, /journal/, or wherever you decide.

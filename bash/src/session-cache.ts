@@ -52,7 +52,6 @@ export class SessionCache {
       this.currentBytes -= entry.bytes;
       return null;
     }
-    // LRU: re-insert to bump to most-recent.
     this.entries.delete(path);
     this.entries.set(path, entry);
     return { content: entry.content, status: entry.status };
@@ -65,12 +64,14 @@ export class SessionCache {
       this.entries.delete(path);
     }
     const bytes = byteLength(content);
-    const expiresAt =
-      this.ttlMs === null
-        ? Number.POSITIVE_INFINITY
-        : this.ttlMs === 0
-          ? this.now() // already expired; next get() returns null
-          : this.now() + this.ttlMs;
+    let expiresAt: number;
+    if (this.ttlMs === null) {
+      expiresAt = Number.POSITIVE_INFINITY;
+    } else if (this.ttlMs === 0) {
+      expiresAt = this.now();
+    } else {
+      expiresAt = this.now() + this.ttlMs;
+    }
     this.entries.set(path, { content, status, expiresAt, bytes });
     this.currentBytes += bytes;
     while (this.currentBytes > this.maxBytes && this.entries.size > 1) {
