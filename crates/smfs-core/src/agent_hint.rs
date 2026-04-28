@@ -333,12 +333,10 @@ where
         .open(&lock_path)
         .with_context(|| format!("open lock {}", lock_path.display()))?;
 
-    use fs2::FileExt;
-    lock_file
-        .lock_exclusive()
+    fs2::FileExt::lock_exclusive(&lock_file)
         .map_err(|e: io::Error| anyhow::anyhow!("lock {}: {e}", lock_path.display()))?;
     let result = f();
-    let _ = lock_file.unlock();
+    let _ = fs2::FileExt::unlock(&lock_file);
     result
 }
 
