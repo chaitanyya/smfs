@@ -22,7 +22,7 @@ Two access flows depending on the runtime:
 ## Install
 
 ```sh
-curl -fsSL https://files.supermemory.ai/install.sh | bash
+curl -fsSL https://smfs.ai/install | bash
 ```
 
 Supports macOS (arm64, x64) and Linux (arm64, x64).
