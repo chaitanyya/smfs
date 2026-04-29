@@ -1,3 +1,6 @@
+<img width="728" height="288" alt="SMFS - folder icon" src="https://github.com/user-attachments/assets/81aa246b-a1c9-489e-a643-0db0c875fa0a" />
+
+
 # smfs
 
 Your Supermemory container, exposed as a filesystem. Read, write, and `grep` your memory like any local directory.
