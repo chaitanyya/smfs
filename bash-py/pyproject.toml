@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "supermemory-bash"
-version = "0.0.1"
+version = "0.0.2"
 description = "Virtual bash environment for AI agents, backed by Supermemory."
 readme = "README.md"
 license = "MIT"
