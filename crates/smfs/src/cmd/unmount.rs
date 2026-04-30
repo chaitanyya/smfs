@@ -86,57 +86,27 @@ fn friendly_path(p: &Path) -> String {
     p.display().to_string()
 }
 
+fn looks_like_path(s: &str) -> bool {
+    s == "." || s == ".." || s.contains('/')
+}
+
 /// Resolve a tag + mountpoint from the CLI target (path | tag | none).
 fn resolve(target: Option<String>) -> Result<(String, Option<PathBuf>)> {
     if let Some(t) = target.as_deref() {
-        let as_path = PathBuf::from(t);
-        if as_path.exists() && as_path.is_dir() {
-            // Walk up from the given path to find .smfs
-            let marker = read_marker_from(&as_path).with_context(|| {
-                format!("no .smfs marker found at or above {}", as_path.display())
+        if looks_like_path(t) {
+            let as_path = PathBuf::from(t);
+            let canon = std::fs::canonicalize(&as_path).unwrap_or(as_path);
+            let marker = super::marker::read_smfs_marker_for_path(&canon).with_context(|| {
+                format!("no .smfs marker found at or above {}", canon.display())
             })?;
-            return Ok((marker.tag, Some(as_path)));
+            return Ok((marker.tag, Some(canon)));
         }
-        // Not a path on disk — treat as tag.
         return Ok((t.to_string(), None));
     }
     let marker = super::marker::read_smfs_marker()
         .context("no target given and no .smfs marker found in cwd ancestors")?;
     let mp = marker.mount_path.as_deref().map(PathBuf::from);
     Ok((marker.tag, mp))
-}
-
-fn read_marker_from(start: &Path) -> Option<super::marker::SmfsMarker> {
-    let mut dir = start.to_path_buf();
-    loop {
-        let marker = dir.join(".smfs");
-        if marker.exists() {
-            let content = std::fs::read_to_string(&marker).ok()?;
-            let mut tag = None;
-            let mut api_url = None;
-            let mut mount_path = None;
-            for line in content.lines() {
-                if let Some(v) = line.strip_prefix("container_tag=") {
-                    tag = Some(v.to_string());
-                }
-                if let Some(v) = line.strip_prefix("api_url=") {
-                    api_url = Some(v.to_string());
-                }
-                if let Some(v) = line.strip_prefix("mount_path=") {
-                    mount_path = Some(v.to_string());
-                }
-            }
-            return Some(super::marker::SmfsMarker {
-                tag: tag?,
-                api_url: api_url.unwrap_or_else(|| "https://api.supermemory.ai".to_string()),
-                mount_path,
-            });
-        }
-        if !dir.pop() {
-            break;
-        }
-    }
-    None
 }
 
 fn force_umount(path: &Path) {
