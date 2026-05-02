@@ -1,5 +1,4 @@
 name: bash release
-
 on:
   push:
     branches: [main]
@@ -22,88 +21,55 @@ jobs:
       version: ${{ steps.versioncheck.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Typecheck
-        run: bun run typecheck
-
-      - name: Lint
-        run: bun run lint
-
-      - name: Test
-        run: bun run test:run
-
-      - name: Build
-        run: bun run build
-
-      - name: Inspect tarball (dry run)
-        run: npm pack --dry-run
-
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run lint
+      - run: bun run test:run
+      - run: bun run build
+      - run: npm pack --dry-run
       - name: Detect version bump
         id: versioncheck
         run: |
           LOCAL=$(node -p "require('./package.json').version")
           PUBLISHED=$(npm view @supermemory/bash version 2>/dev/null || echo "")
-          echo "local: $LOCAL"
-          echo "published: ${PUBLISHED:-none}"
           if [ -z "$PUBLISHED" ] || [ "$LOCAL" != "$PUBLISHED" ]; then
             echo "publish=true" >> "$GITHUB_OUTPUT"
             echo "version=$LOCAL" >> "$GITHUB_OUTPUT"
-            echo "→ version bump detected; publish step (if enabled) would ship $LOCAL"
           else
             echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "→ no version bump; publish would skip"
           fi
 
   publish:
     needs: check
-    # DISABLED. To enable: set NPM_TOKEN secret, then change to
-    # `if: needs.check.outputs.should_publish == 'true'`.
-    if: false
+    if: needs.check.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: bash
     permissions:
-      contents: write
+      contents: write   # for gh release create
+      id-token: write   # for npm OIDC trusted publishing
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Build
-        run: bun run build
-
-      - name: Publish to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      # npm bundled with Node 20 is too old for OIDC; need >= 11.5.1
+      - run: npm install -g npm@latest
+      - run: npm publish --access public
       - name: Create GitHub release
         run: |
           gh release create "bash-v${{ needs.check.outputs.version }}" \
