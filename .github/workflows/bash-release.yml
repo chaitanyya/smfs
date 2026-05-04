@@ -54,8 +54,8 @@ jobs:
       run:
         working-directory: bash
     permissions:
-      contents: write   # for gh release create
-      id-token: write   # for npm OIDC trusted publishing
+      contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -70,11 +70,9 @@ jobs:
       # npm bundled with Node 20 is too old for OIDC; need >= 11.5.1
       - run: npm install -g npm@latest
       - run: npm publish --access public
-      - name: Create GitHub release
+      - name: Push git tag
+        working-directory: ${{ github.workspace }}
         run: |
-          gh release create "bash-v${{ needs.check.outputs.version }}" \
-            --title "bash v${{ needs.check.outputs.version }}" \
-            --generate-notes \
-            --target ${{ github.sha }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag="bash-v${{ needs.check.outputs.version }}"
+          git tag "$tag" "${{ github.sha }}"
+          git push origin "$tag"

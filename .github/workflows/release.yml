@@ -80,6 +80,7 @@ jobs:
     needs: build
     runs-on: ubuntu-22.04
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -131,3 +132,4 @@ jobs:
             dist/smfs-linux-x64.sha256
             dist/smfs-linux-arm64.sha256
             dist/manifest.json
+            install.sh
