@@ -681,16 +681,9 @@ async fn test_reconcile_attach_by_path_skips_when_dirty() {
         .unwrap();
     handle.write(0, b"local edits").await.unwrap();
     handle.flush().await.unwrap();
-    fs.db().push_queue_upsert(
-        "/local.md",
-        PushOp::Create,
-        Some(attr.ino),
-        None,
-        None,
-        1,
-    );
     fs.db()
-        .set_dirty_since(attr.ino, Some(9_999_999_999_999));
+        .push_queue_upsert("/local.md", PushOp::Create, Some(attr.ino), None, None, 1);
+    fs.db().set_dirty_since(attr.ino, Some(9_999_999_999_999));
 
     let doc = doc_with("rid-1", "/local.md", "text", "remote stale", "done");
     let outcome = fs.reconcile_one(&doc).expect("reconcile_one ok");
