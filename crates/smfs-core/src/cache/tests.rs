@@ -669,3 +669,117 @@ async fn test_file_size_cap_enforced() {
         .expect_err("write past cap must fail");
     assert!(matches!(err, VfsError::InvalidPath(_)));
 }
+
+#[tokio::test]
+async fn test_reconcile_attach_by_path_skips_when_dirty() {
+    use crate::cache::fs::ReconcileOutcome;
+
+    let fs = fs();
+    let (attr, handle) = fs
+        .create_file(ROOT, "local.md", 0o644, UID, GID)
+        .await
+        .unwrap();
+    handle.write(0, b"local edits").await.unwrap();
+    handle.flush().await.unwrap();
+    fs.db()
+        .push_queue_upsert("/local.md", PushOp::Create, Some(attr.ino), None, None, 1);
+    fs.db().set_dirty_since(attr.ino, Some(9_999_999_999_999));
+
+    let doc = doc_with("rid-1", "/local.md", "text", "remote stale", "done");
+    let outcome = fs.reconcile_one(&doc).expect("reconcile_one ok");
+
+    assert!(
+        matches!(outcome, ReconcileOutcome::SkippedDirty),
+        "expected SkippedDirty, got {outcome:?}"
+    );
+    let bytes = fs.db().read_all_content(attr.ino);
+    assert_eq!(&bytes, b"local edits", "local content was clobbered");
+    assert_eq!(fs.db().get_remote_id(attr.ino).as_deref(), Some("rid-1"));
+    let snap = fs
+        .push_queue_inspect("/local.md")
+        .expect("push_queue row should exist");
+    assert_eq!(snap.remote_id.as_deref(), Some("rid-1"));
+}
+
+// ─── Hot-path locality ──────────────────────────────────────────────
+//
+// API client points at an unbindable port: any synchronous network I/O
+// in lookup/readdir would either time out or fail-fast and the wall-time
+// assertion would catch it.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_lookup_burst_does_not_block_on_api() {
+    let api = Arc::new(crate::api::ApiClient::new(
+        "http://127.0.0.1:1",
+        "test-key",
+        "test-tag",
+    ));
+    let db = Arc::new(super::db::Db::open_in_memory().unwrap());
+    let fs = Arc::new(SupermemoryFs::with_api(db, api));
+
+    fs.mkdir(ROOT, "docs", 0o755, UID, GID).await.unwrap();
+    let docs_attr = fs.lookup(ROOT, "docs").await.unwrap().unwrap();
+
+    let start = std::time::Instant::now();
+    let mut joins = Vec::with_capacity(120);
+    for i in 0..120 {
+        let fs_c = fs.clone();
+        let docs_ino = docs_attr.ino;
+        joins.push(tokio::spawn(async move {
+            let name_a = format!("api-reference-{i}");
+            let _ = fs_c.lookup(docs_ino, &name_a).await.unwrap();
+            let _ = fs_c.lookup(ROOT, &format!("missing-{i}")).await.unwrap();
+        }));
+    }
+    for j in joins {
+        j.await.unwrap();
+    }
+    let elapsed = start.elapsed();
+
+    // Generous bound vs the NFS soft-mount timeout (~3s) so this stays
+    // stable on slow CI; the signal is "not seconds per call".
+    assert!(
+        elapsed < std::time::Duration::from_millis(500),
+        "lookup burst took {elapsed:?}; hot path may be blocking on API"
+    );
+    let q = fs.hydration().pending_len() + fs.hydration().inflight_len();
+    assert!(q >= 1, "expected ≥1 hydration request; got {q}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_readdir_on_empty_dir_does_not_block_on_api() {
+    let api = Arc::new(crate::api::ApiClient::new(
+        "http://127.0.0.1:1",
+        "test-key",
+        "test-tag",
+    ));
+    let db = Arc::new(super::db::Db::open_in_memory().unwrap());
+    let fs = Arc::new(SupermemoryFs::with_api(db, api));
+
+    let mut dir_inos = Vec::new();
+    for i in 0..30 {
+        let attr = fs
+            .mkdir(ROOT, &format!("d{i}"), 0o755, UID, GID)
+            .await
+            .unwrap();
+        dir_inos.push(attr.ino);
+    }
+
+    let start = std::time::Instant::now();
+    let mut joins = Vec::new();
+    for ino in dir_inos {
+        let fs_c = fs.clone();
+        joins.push(tokio::spawn(async move {
+            let names = fs_c.readdir(ino).await.unwrap().unwrap();
+            assert!(names.is_empty());
+        }));
+    }
+    for j in joins {
+        j.await.unwrap();
+    }
+    let elapsed = start.elapsed();
+    assert!(
+        elapsed < std::time::Duration::from_millis(500),
+        "readdir burst took {elapsed:?}; empty-dir hot path may be blocking on API"
+    );
+}

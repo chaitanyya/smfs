@@ -90,6 +90,14 @@ impl SyncEngine {
             set.spawn(async move {
                 run_deletion_loop(fs_c, opts.deletion_scan_interval, &mut sd_c).await;
             });
+
+            // Loop F — hydration worker. Gated on pull_enabled so
+            // `--no-sync` mounts make no remote reads.
+            let fs_f = fs.clone();
+            let sd_f = shutdown.clone();
+            set.spawn(async move {
+                crate::cache::hydration::run_hydration_worker(fs_f, sd_f).await;
+            });
         }
 
         let fs_d = fs.clone();
