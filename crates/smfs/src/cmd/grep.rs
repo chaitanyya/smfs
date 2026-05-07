@@ -230,6 +230,10 @@ pub async fn run(args: Args) -> Result<()> {
     eprintln!("# searches by meaning across files in this container. usage:");
     eprintln!("#   grep \"natural language query\"          search all files");
     eprintln!("#   grep \"query\" path/to/dir/              search within directory");
+    eprintln!("# output: <filepath>:<line_start>-<line_end>:<chunk>");
+    eprintln!(
+        "# chunk text is verbatim from the file. extract by the line range. never read or cat whole files."
+    );
     eprintln!();
 
     let mut file_cache: HashMap<String, Option<String>> = HashMap::new();
