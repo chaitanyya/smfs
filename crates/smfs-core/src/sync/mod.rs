@@ -27,15 +27,17 @@ use tokio::task::JoinSet;
 
 use crate::cache::SupermemoryFs;
 
+#[derive(Debug, Clone, Copy)]
+pub enum InitialPullProgress {
+    DeletionScan(scan::DeletionScanProgress),
+    Pull(pull::PullProgress),
+}
+
 /// Knobs for the sync engine. All optional — defaults are production-sane.
 #[derive(Debug, Clone, Copy)]
 pub struct SyncOptions {
     pub delta_interval: Duration,
     pub deletion_scan_interval: Duration,
-    /// When `false`, skip the pull-side loops (A delta pull, C deletion
-    /// scan). Push (D) and inflight status poller (E) always run because
-    /// killing them would stop delivering local writes to Supermemory —
-    /// which defeats the purpose of mounting. Default `true`.
     pub pull_enabled: bool,
 }
 
@@ -61,6 +63,29 @@ impl SyncEngine {
     pub async fn initial_pull(fs: &Arc<SupermemoryFs>) -> anyhow::Result<(usize, usize)> {
         let removed = scan::deletion_scan(fs).await.unwrap_or(0);
         let reconciled = pull::full_pull(fs).await?;
+        Ok((removed, reconciled))
+    }
+
+    pub async fn initial_pull_with_progress<F>(
+        fs: &Arc<SupermemoryFs>,
+        mut on_progress: F,
+    ) -> anyhow::Result<(usize, usize)>
+    where
+        F: FnMut(InitialPullProgress) + Send,
+    {
+        let removed = if fs.db().remote_count() == 0 {
+            0
+        } else {
+            scan::deletion_scan_with_progress(fs, |progress| {
+                on_progress(InitialPullProgress::DeletionScan(progress));
+            })
+            .await
+            .unwrap_or(0)
+        };
+        let reconciled = pull::full_pull_with_progress(fs, |progress| {
+            on_progress(InitialPullProgress::Pull(progress));
+        })
+        .await?;
         Ok((removed, reconciled))
     }
 
@@ -93,6 +118,14 @@ impl SyncEngine {
             let mut sd_c = shutdown.clone();
             set.spawn(async move {
                 run_deletion_loop(fs_c, opts.deletion_scan_interval, &mut sd_c).await;
+            });
+
+            // Loop F — hydration worker. Gated on pull_enabled so
+            // `--no-sync` mounts make no remote reads.
+            let fs_f = fs.clone();
+            let sd_f = shutdown.clone();
+            set.spawn(async move {
+                crate::cache::hydration::run_hydration_worker(fs_f, sd_f).await;
             });
         }
 

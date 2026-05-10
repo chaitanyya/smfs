@@ -15,6 +15,7 @@ use std::time::Instant;
 use anyhow::{Context, Result};
 use tokio::sync::Notify;
 
+use super::startup::StartupReporter;
 use smfs_core::cache::{Db, SupermemoryFs};
 use smfs_core::daemon;
 use smfs_core::mount::{mount_fs, MountBackend, MountOpts};
@@ -36,13 +37,27 @@ pub struct DaemonConfig {
     pub deletion_scan_interval: u64,
     pub no_sync: bool,
     pub drain_timeout: u64,
+    pub import_existing: bool,
 }
 
 pub async fn run(cfg: DaemonConfig) -> Result<()> {
+    let mut startup = StartupReporter::new(&cfg.container_tag);
+    startup.report("creating_mountpoint", "preparing mountpoint")?;
+
     let created_dir = !cfg.mount_path.exists();
     if created_dir {
         std::fs::create_dir_all(&cfg.mount_path)?;
     }
+
+    let pre_existing_files = if cfg.import_existing && !created_dir {
+        let files = collect_files_recursive(&cfg.mount_path, &cfg.mount_path);
+        if !files.is_empty() {
+            eprintln!("collected {} file(s) for import", files.len());
+        }
+        files
+    } else {
+        Vec::new()
+    };
 
     // uid/gid of the invoking user for the mount ownership.
     #[allow(unsafe_code)]
@@ -53,18 +68,32 @@ pub async fn run(cfg: DaemonConfig) -> Result<()> {
         .parent()
         .unwrap_or(&cfg.mount_path)
         .join(".smfs");
-    std::fs::write(
-        &marker_path,
-        format!(
-            "container_tag={}\napi_url={}\nmount_path={}\n",
-            cfg.container_tag,
-            cfg.api_url,
-            cfg.mount_path.display(),
-        ),
-    )?;
+    {
+        use super::marker::{format_marker, parse_all_markers, SmfsMarker};
+        let new_entry = SmfsMarker {
+            tag: cfg.container_tag.clone(),
+            api_url: cfg.api_url.clone(),
+            mount_path: Some(cfg.mount_path.display().to_string()),
+        };
+        let content = if marker_path.exists() {
+            let existing = std::fs::read_to_string(&marker_path).unwrap_or_default();
+            let mut entries = parse_all_markers(&existing);
+            entries.retain(|m| m.tag != cfg.container_tag);
+            entries.push(new_entry);
+            entries
+                .iter()
+                .map(format_marker)
+                .collect::<Vec<_>>()
+                .join("\n")
+        } else {
+            format_marker(&new_entry)
+        };
+        std::fs::write(&marker_path, content)?;
+    }
 
     let opts = MountOpts::new(cfg.mount_path.clone(), cfg.backend).with_ownership(uid, gid);
 
+    startup.report("validating_key", "validating API key")?;
     let session = if cfg.ephemeral {
         smfs_core::api::ApiClient::validate_key(&cfg.api_url, &cfg.api_key)
             .await
@@ -89,6 +118,7 @@ pub async fn run(cfg: DaemonConfig) -> Result<()> {
                     "server did not return org id; cannot open cache. Run `smfs login` and retry."
                 )
             })?;
+        startup.report("opening_cache", format!("opening cache for org {org_id}"))?;
         let db_path = smfs_core::config::cache_db_path(org_id, &cfg.container_tag);
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -108,6 +138,7 @@ pub async fn run(cfg: DaemonConfig) -> Result<()> {
         Arc::new(Db::open(&db_path)?)
     };
 
+    startup.report("configuring_api", "configuring API client")?;
     let mut api_client =
         smfs_core::api::ApiClient::new(&cfg.api_url, &cfg.api_key, &cfg.container_tag);
     if let Some(uid) = session.as_ref().and_then(|s| s.user_id.clone()) {
@@ -132,19 +163,77 @@ pub async fn run(cfg: DaemonConfig) -> Result<()> {
 
     let fs = Arc::new(SupermemoryFs::with_api(db, api));
 
+    startup.report("warming_profile", "warming profile")?;
     fs.warm_profile().await;
 
-    // Initial pull is a pull-side op — gated by --no-sync.
-    if !cfg.no_sync {
-        match smfs_core::sync::SyncEngine::initial_pull(&fs).await {
-            Ok((removed, reconciled)) => {
-                eprintln!(
-                    "initial sync: {reconciled} docs reconciled, {removed} stale entries removed"
-                );
+    startup.report("initial_sync", "starting initial sync")?;
+    let pull_succeeded = match smfs_core::sync::SyncEngine::initial_pull_with_progress(
+        &fs,
+        |progress| match progress {
+            smfs_core::sync::InitialPullProgress::DeletionScan(progress) => {
+                if progress.remote_seen == 1 || progress.remote_seen % 100 == 0 {
+                    let _ = startup.report_counts(
+                        "initial_sync",
+                        format!(
+                            "deletion scan saw {} remote docs (page {}/{})",
+                            progress.remote_seen, progress.page, progress.total_pages
+                        ),
+                        progress.remote_seen,
+                        progress.total_items,
+                    );
+                }
             }
-            Err(e) => {
-                tracing::warn!(error = %e, "initial sync failed; mount will continue");
+            smfs_core::sync::InitialPullProgress::Pull(progress) => {
+                if progress.reconciled == 1 || progress.reconciled % 100 == 0 {
+                    let _ = startup.report_counts(
+                        "initial_sync",
+                        format!(
+                            "reconciled {} docs (page {}/{})",
+                            progress.reconciled, progress.page, progress.total_pages
+                        ),
+                        progress.reconciled,
+                        progress.total_items,
+                    );
+                }
             }
+        },
+    )
+    .await
+    {
+        Ok((removed, reconciled)) => {
+            eprintln!(
+                "initial sync: {reconciled} docs reconciled, {removed} stale entries removed"
+            );
+            true
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "initial sync failed; mount will continue without auto-import");
+            false
+        }
+    };
+
+    if !pre_existing_files.is_empty() {
+        if !pull_succeeded {
+            eprintln!(
+                "skipping auto-import of {} file(s): initial sync failed, \
+                 cache cannot reliably detect duplicates. Remount when online to import.",
+                pre_existing_files.len()
+            );
+        } else {
+            let mut imported = 0usize;
+            let mut skipped = 0usize;
+            let mut errors = 0usize;
+            for (rel_path, contents) in &pre_existing_files {
+                match fs.import_file(rel_path, contents).await {
+                    Ok(true) => imported += 1,
+                    Ok(false) => skipped += 1,
+                    Err(e) => {
+                        tracing::warn!(path = %rel_path, error = %e, "import failed");
+                        errors += 1;
+                    }
+                }
+            }
+            eprintln!("import: {imported} imported, {skipped} already existed, {errors} failed");
         }
     }
 
@@ -157,6 +246,7 @@ pub async fn run(cfg: DaemonConfig) -> Result<()> {
     };
     let sync_tasks = smfs_core::sync::SyncEngine::start(fs.clone(), sync_opts, shutdown_rx.clone());
 
+    startup.report("mounting_fs", "mounting filesystem")?;
     let handle = mount_fs(fs.clone(), opts).await?;
 
     // Auto-install grep wrapper on first mount.
@@ -167,6 +257,7 @@ pub async fn run(cfg: DaemonConfig) -> Result<()> {
     }
 
     // Bring up the IPC control socket. Clients use it for status/sync/unmount.
+    startup.report("starting_ipc", "starting IPC socket")?;
     daemon::ensure_dirs().context("creating daemon state dirs")?;
     let ipc_shutdown_notify = Arc::new(Notify::new());
     let state = Arc::new(smfs_core::daemon::ipc::IpcState {
@@ -196,6 +287,7 @@ pub async fn run(cfg: DaemonConfig) -> Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(&pid_path, std::process::id().to_string())?;
+    startup.report("ready", "filesystem mounted and IPC ready")?;
 
     eprintln!(
         "supermemoryfs mounted at {} (backend: {}, tag: {})",
@@ -259,10 +351,7 @@ pub async fn run(cfg: DaemonConfig) -> Result<()> {
     .await;
     let _ = tokio::time::timeout(std::time::Duration::from_secs(2), ipc_handle).await;
 
-    // Final deletion scan — pull-side, gated by --no-sync.
-    if !cfg.no_sync {
-        smfs_core::sync::SyncEngine::unmount_scan(&fs).await;
-    }
+    smfs_core::sync::SyncEngine::unmount_scan(&fs).await;
 
     drop(handle);
     #[cfg(unix)]
@@ -272,11 +361,62 @@ pub async fn run(cfg: DaemonConfig) -> Result<()> {
             .output();
     }
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    let _ = std::fs::remove_file(&marker_path);
+    {
+        use super::marker::{format_marker, parse_all_markers};
+        if let Ok(existing) = std::fs::read_to_string(&marker_path) {
+            let remaining: Vec<_> = parse_all_markers(&existing)
+                .into_iter()
+                .filter(|m| m.tag != cfg.container_tag)
+                .collect();
+            if remaining.is_empty() {
+                let _ = std::fs::remove_file(&marker_path);
+            } else {
+                let out = remaining
+                    .iter()
+                    .map(format_marker)
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let _ = std::fs::write(&marker_path, out);
+            }
+        } else {
+            let _ = std::fs::remove_file(&marker_path);
+        }
+    }
     let _ = std::fs::remove_file(&pid_path);
     let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(daemon::startup_path(&cfg.container_tag));
     if created_dir {
         let _ = std::fs::remove_dir(&cfg.mount_path);
     }
     Ok(())
+}
+
+fn collect_files_recursive(
+    dir: &std::path::Path,
+    root: &std::path::Path,
+) -> Vec<(String, Vec<u8>)> {
+    let mut out = Vec::new();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return out;
+    };
+    for entry in entries.flatten() {
+        let Ok(ft) = entry.file_type() else { continue };
+        let path = entry.path();
+        if ft.is_dir() {
+            out.extend(collect_files_recursive(&path, root));
+        } else if ft.is_file() {
+            let rel = path.strip_prefix(root).unwrap_or(&path);
+            let vfs_path = format!("/{}", rel.to_string_lossy());
+            if smfs_core::cache::is_macos_noise_path(&vfs_path) {
+                continue;
+            }
+            match std::fs::read(&path) {
+                Ok(data) => out.push((vfs_path, data)),
+                Err(e) => {
+                    tracing::warn!(path = %path.display(), error = %e, "skipping unreadable file");
+                }
+            }
+        }
+    }
+    out
 }

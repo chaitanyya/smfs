@@ -114,7 +114,6 @@ pub async fn run(args: Args) -> Result<()> {
         eprintln!("# usage:");
         eprintln!("#   grep \"natural language query\"         search by meaning, all files");
         eprintln!("#   grep \"query\" path/to/dir/             scope to a directory");
-        eprintln!("#   grep -F \"exact string\" path/to/file   exact match (bypasses semantic)");
         return Ok(());
     }
 
@@ -150,7 +149,6 @@ pub async fn run(args: Args) -> Result<()> {
     let canonical_mount = mount_path
         .and_then(|mp| mp.canonicalize().ok())
         .or_else(|| {
-            // If path arg is given, walk up from it to find .smfs marker.
             args.path.as_deref().and_then(|p| {
                 let target = if p.starts_with('/') {
                     Path::new(p).to_path_buf()
@@ -158,27 +156,15 @@ pub async fn run(args: Args) -> Result<()> {
                     std::env::current_dir().ok()?.join(p)
                 };
                 let target = target.canonicalize().ok()?;
-                let mut dir = if target.is_dir() {
+                let search_from = if target.is_dir() {
                     target
                 } else {
                     target.parent()?.to_path_buf()
                 };
-                loop {
-                    if dir.join(".smfs").exists() {
-                        // Read mount_path from the marker
-                        let content = std::fs::read_to_string(dir.join(".smfs")).ok()?;
-                        for line in content.lines() {
-                            if let Some(v) = line.strip_prefix("mount_path=") {
-                                return Path::new(v).canonicalize().ok();
-                            }
-                        }
-                        return Some(dir);
-                    }
-                    if !dir.pop() {
-                        break;
-                    }
-                }
-                None
+                let m = super::marker::read_smfs_marker_for_path(&search_from)?;
+                m.mount_path
+                    .as_deref()
+                    .and_then(|mp| Path::new(mp).canonicalize().ok())
             })
         });
 
@@ -232,7 +218,6 @@ pub async fn run(args: Args) -> Result<()> {
             args.query
         );
         eprintln!("# this searches by meaning, not exact text. try a natural language query.");
-        eprintln!("# for exact string matching: grep -F \"pattern\" <path>");
         return Ok(());
     }
 
@@ -245,8 +230,9 @@ pub async fn run(args: Args) -> Result<()> {
     eprintln!("# searches by meaning across files in this container. usage:");
     eprintln!("#   grep \"natural language query\"          search all files");
     eprintln!("#   grep \"query\" path/to/dir/              search within directory");
+    eprintln!("# output: <filepath>:<line_start>-<line_end>:<chunk>");
     eprintln!(
-        "#   grep -F \"exact string\" path/to/dir/    exact match (bypasses semantic search)"
+        "# chunk text is verbatim from the file. extract by the line range. never read or cat whole files."
     );
     eprintln!();
 

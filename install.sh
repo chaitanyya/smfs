@@ -48,14 +48,18 @@ download_file() {
 }
 
 resolve_latest_version() {
-    if [ "$DOWNLOADER" = "curl" ]; then
-        curl -fsI "$RELEASES_URL/latest" \
-            | awk -F'/' 'tolower($1) ~ /^location:/ { sub(/\r$/, "", $NF); print $NF }' \
+    local api="https://api.github.com/repos/$REPO/releases?per_page=30"
+    if [ "$HAS_JQ" = true ]; then
+        download_file "$api" \
+            | jq -r '[.[] | select(.draft|not) | select(.prerelease|not)
+                     | select(.tag_name|test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))][0].tag_name // empty' \
             | sed -n 's/^v//p'
     else
-        wget -q --method=HEAD --server-response "$RELEASES_URL/latest" 2>&1 \
-            | awk -F'/' '/Location:/ { sub(/\r$/, "", $NF); print $NF }' \
-            | sed -n 's/^v//p'
+        download_file "$api" \
+            | tr -d '\n' \
+            | grep -oE '"tag_name":[[:space:]]*"v[0-9]+\.[0-9]+\.[0-9]+"' \
+            | head -n1 \
+            | sed -E 's/.*"v([0-9]+\.[0-9]+\.[0-9]+)".*/\1/'
     fi
 }
 
