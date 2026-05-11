@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "lo": {
+    "rules": [
+      {
+        "match": {
+          "dst": "127.0.0.1",
+          "dport": 8500,
+          "proto": "tcp",
+          "bidirectional": true
+        },
+        "delay": {
+          "time_ms": 10
+        },
+        "reorder": {
+          "percent": 25,
+          "correlation": 0.5,
+          "gap": 5
+        }
+      }
+    ]
+  }
+}

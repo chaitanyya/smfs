@@ -37,7 +37,10 @@ parking_lot = "0.12"
 libc = "0.2"
 
 # HTTP client (M6)
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
+# rustls-tls-native-roots so the OS trust store is honored — required for
+# deterministic-VM mock testing where a hoverfly CA is installed at runtime
+# (see .workers/ for the mock simulation + CA pinning story).
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots", "multipart"] }
 
 # SQLite cache (M5)
 rusqlite = { version = "0.32", features = ["bundled"] }

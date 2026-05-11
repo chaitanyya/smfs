@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "lo": {
+    "rules": [
+      {
+        "match": {
+          "dst": "127.0.0.1",
+          "dport": 8500,
+          "proto": "tcp",
+          "bidirectional": true
+        },
+        "loss": {
+          "kind": "gemodel",
+          "gemodel": {
+            "p": 0.05,
+            "r": 0.5,
+            "h": 0.0,
+            "k": 1.0
+          }
+        }
+      }
+    ]
+  }
+}

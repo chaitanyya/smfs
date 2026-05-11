@@ -1,0 +1,1598 @@
+{
+  "data": {
+    "globalActions": {
+      "delays": [],
+      "delaysLogNormal": []
+    },
+    "pairs": [
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"containerTags\": [\"smfs_test_workload_v1\"], \"filepath\": \"/journal/\"}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "DELETE"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents/bulk"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"success\":true,\"deletedCount\":2,\"containerTags\":[\"smfs_test_workload_v1\"],\"_cleanup\":{\"documentIds\":[\"iX6bcyJdxV5bydQTeZRNqc\",\"mrSF334rSSEJ8PikVX3Qkt\"],\"associatedMemories\":[]}}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"containerTags\": [\"smfs_test_workload_v1\"], \"filepath\": \"/notes/standup-2026-05-09.md\"}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "DELETE"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents/bulk"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"success\":true,\"deletedCount\":1,\"containerTags\":[\"smfs_test_workload_v1\"],\"_cleanup\":{\"documentIds\":[\"Zfr1nwpEWg5MSYe8H1UmWJ\"],\"associatedMemories\":[]}}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"ids\": [\"nGdGt6hmSA4Li3FJ2f31x3\", \"eC3XYdfUJxRCGXJxbebYt6\"], \"containerTags\": [\"smfs_test_workload_v1\"]}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "DELETE"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents/bulk"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"success\":true,\"deletedCount\":2,\"_cleanup\":{\"documentIds\":[\"eC3XYdfUJxRCGXJxbebYt6\",\"nGdGt6hmSA4Li3FJ2f31x3\"],\"containerTags\":[\"smfs_test_workload_v1\"],\"associatedMemories\":[]}}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": ""
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "GET"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents/iX6bcyJdxV5bydQTeZRNqc"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"connectionId\":null,\"content\":\"Journal — Friday. Long day on capture proxies. mTLS still annoying. Snowball lights tonight if we land.\",\"createdAt\":\"2026-05-10T23:28:09.173Z\",\"customId\":null,\"id\":\"iX6bcyJdxV5bydQTeZRNqc\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"ogImage\":null,\"raw\":null,\"source\":\"api\",\"taskType\":\"superrag\",\"status\":\"done\",\"summary\":null,\"title\":\"Journal — Friday. Long day on capture proxies. mTL...\",\"type\":\"text\",\"updatedAt\":\"2026-05-10T23:28:18.432Z\",\"url\":null,\"filepath\":\"/journal/2026-05-09.md\",\"userId\":\"9BQQ5XGReNGPmwd7KVxbFE\",\"containerTags\":[\"smfs_test_workload_v1\"]}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": ""
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "GET"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents/kTfGX15vkAt8kd1SiFUx1h"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"connectionId\":null,\"content\":\"# OAuth refresh token rotation\\n\\nRefresh tokens are rotated on every use. The server issues a new refresh token alongside each new access token and revokes the old one.\",\"createdAt\":\"2026-05-10T23:28:01.531Z\",\"customId\":null,\"id\":\"kTfGX15vkAt8kd1SiFUx1h\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"ogImage\":null,\"raw\":null,\"source\":\"api\",\"taskType\":\"superrag\",\"status\":\"done\",\"summary\":null,\"title\":\"# OAuth refresh token rotation\\n\\nRefresh tokens are...\",\"type\":\"text\",\"updatedAt\":\"2026-05-10T23:28:10.586Z\",\"url\":null,\"filepath\":\"/notes/oauth.md\",\"userId\":\"9BQQ5XGReNGPmwd7KVxbFE\",\"containerTags\":[\"smfs_test_workload_v1\"]}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": ""
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "GET"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents/processing"
+            }
+          ],
+          "query": {
+            "containerTag": [
+              {
+                "matcher": "exact",
+                "value": "smfs_test_workload_v1"
+              }
+            ]
+          },
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"documents\":[],\"totalCount\":0}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Length": [
+              "31"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": ""
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "GET"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/session"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"org\":{\"createdAt\":\"2025-09-05T17:10:33.354Z\",\"id\":\"qRYusvnygfEqqp2rDjWrcc\",\"logo\":null,\"metadata\":{\"isConsumer\":true,\"activeProducts\":[\"api_enterprise\"]},\"name\":\"Chaitanya's Organization\",\"slug\":\"salty-thoughtless-branch\"},\"session\":{\"id\":\"vyAjeczqpVCqHcHx2XVavx\",\"userId\":\"9BQQ5XGReNGPmwd7KVxbFE\",\"userAgent\":null,\"ipAddress\":null,\"createdAt\":\"2026-05-10T23:27:59.767Z\",\"updatedAt\":\"2026-05-10T23:27:59.767Z\",\"expiresAt\":\"2027-05-10T23:18:19.578Z\"},\"user\":{\"name\":\"Chaitanya Choudhary\",\"email\":\"chai@workers.io\",\"emailVerified\":true,\"image\":\"https://lh3.googleusercontent.com/a/ACg8ocKEltDK38yz32N9ffp41vRvhyJ1G5HT9NCobjKdCmgE7VrdA7E=s96-c\",\"createdAt\":\"2025-09-05T17:10:33.326Z\",\"updatedAt\":\"2025-09-05T17:10:33.326Z\",\"username\":null,\"displayUsername\":null,\"id\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"plan\":\"enterprise\",\"scope\":{\"type\":\"full\",\"permission\":\"write\"},\"role\":\"owner\",\"accessType\":\"full\",\"containerTags\":null}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"memoryFilesystemPaths\": [\"/notes/\", \"/journal/\", \"/work/\"]}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "PATCH"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/container-tags/smfs_test_workload_v1"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"containerTag\":\"smfs_test_workload_v1\",\"entityContext\":null,\"memoryFilesystemPaths\":[\"/notes/\",\"/journal/\",\"/work/\"],\"updatedAt\":\"2026-05-10T23:28:19.526Z\"}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"metadata\": {\"source\": \"supermemoryfs\", \"lastEditedBy\": \"9BQQ5XGReNGPmwd7KVxbFE\"}, \"filepath\": \"/work/todo.md\"}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "PATCH"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents/LcMvpqWr9psNQJgDohWWSp"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"id\":\"LcMvpqWr9psNQJgDohWWSp\",\"status\":\"done\"}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Length": [
+              "47"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"metadata\": {\"source\": \"supermemoryfs\", \"lastEditedBy\": \"9BQQ5XGReNGPmwd7KVxbFE\"}, \"content\": \"# OAuth refresh token rotation\\n\\nRefresh tokens are rotated on every use. The server issues a new refresh token alongside each new access token and revokes the old one. If the old token is presented after rotation, the entire token family is revoked.\\n\"}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "PATCH"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents/kTfGX15vkAt8kd1SiFUx1h"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"id\":\"kTfGX15vkAt8kd1SiFUx1h\",\"status\":\"queued\"}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Length": [
+              "49"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"content\": \"# Design review notes \\u2014 2026 Q1\\n\\n- Replication lag budget: 250ms p99\\n- Failover drill cadence: weekly\\n\", \"filepath\": \"/notes/design-review-2026q1.md\", \"containerTag\": \"smfs_test_workload_v1\", \"metadata\": {\"source\": \"supermemoryfs\", \"lastEditedBy\": \"9BQQ5XGReNGPmwd7KVxbFE\"}}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"id\":\"qkDx4fMXKgtHc9pg4WMmmx\",\"status\":\"queued\"}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Length": [
+              "49"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"content\": \"# OAuth refresh token rotation\\n\\nRefresh tokens are rotated on every use. The server issues a new refresh token alongside each new access token and revokes the old one.\\n\", \"filepath\": \"/notes/oauth.md\", \"containerTag\": \"smfs_test_workload_v1\", \"metadata\": {\"source\": \"supermemoryfs\", \"lastEditedBy\": \"9BQQ5XGReNGPmwd7KVxbFE\"}}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"id\":\"kTfGX15vkAt8kd1SiFUx1h\",\"status\":\"queued\"}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Length": [
+              "49"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"content\": \"# Postgres tuning crib\\n\\nshared_buffers = 25% of RAM. effective_cache_size ~ 75%. random_page_cost=1.1 on SSD.\\n\", \"filepath\": \"/notes/postgres-tuning.md\", \"containerTag\": \"smfs_test_workload_v1\", \"metadata\": {\"source\": \"supermemoryfs\", \"lastEditedBy\": \"9BQQ5XGReNGPmwd7KVxbFE\"}}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"id\":\"mXEFSDFVHArmeGkJ4rbdXF\",\"status\":\"queued\"}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Length": [
+              "49"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"content\": \"# Sprint plan\\n\\n1. Mocks captured for smfs deterministic VM\\n2. Workload variants for additions, deletions, mixed\\n3. Fault models: latency, loss, partition\\n\", \"filepath\": \"/work/sprint-plan.md\", \"containerTag\": \"smfs_test_workload_v1\", \"metadata\": {\"source\": \"supermemoryfs\", \"lastEditedBy\": \"9BQQ5XGReNGPmwd7KVxbFE\"}}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"id\":\"iRG9Mqie824jyfP2a51BDd\",\"status\":\"queued\"}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Length": [
+              "49"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"content\": \"Incident: FUSE deadlock when push queue back-pressured the writer thread. Fix: bounded channel + drop-oldest.\\n\", \"filepath\": \"/work/incidents/2026-05-07-fuse-deadlock.md\", \"containerTag\": \"smfs_test_workload_v1\", \"metadata\": {\"source\": \"supermemoryfs\", \"lastEditedBy\": \"9BQQ5XGReNGPmwd7KVxbFE\"}}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"id\":\"eC3XYdfUJxRCGXJxbebYt6\",\"status\":\"queued\"}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Length": [
+              "49"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"content\": \"Incident: cache stampede on cold start. Mitigation: jittered refresh window.\\n\", \"filepath\": \"/work/incidents/2026-05-04-cache-stampede.md\", \"containerTag\": \"smfs_test_workload_v1\", \"metadata\": {\"source\": \"supermemoryfs\", \"lastEditedBy\": \"9BQQ5XGReNGPmwd7KVxbFE\"}}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"id\":\"nGdGt6hmSA4Li3FJ2f31x3\",\"status\":\"queued\"}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Length": [
+              "49"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"content\": \"Journal \\u2014 Friday. Long day on capture proxies. mTLS still annoying. Snowball lights tonight if we land.\\n\", \"filepath\": \"/journal/2026-05-09.md\", \"containerTag\": \"smfs_test_workload_v1\", \"metadata\": {\"source\": \"supermemoryfs\", \"lastEditedBy\": \"9BQQ5XGReNGPmwd7KVxbFE\"}}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"id\":\"iX6bcyJdxV5bydQTeZRNqc\",\"status\":\"queued\"}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Length": [
+              "49"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"content\": \"Journal \\u2014 Saturday. Got hoverfly capturing. Wrote driver. Want to sleep at a sane hour.\\n\", \"filepath\": \"/journal/2026-05-10.md\", \"containerTag\": \"smfs_test_workload_v1\", \"metadata\": {\"source\": \"supermemoryfs\", \"lastEditedBy\": \"9BQQ5XGReNGPmwd7KVxbFE\"}}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"id\":\"mrSF334rSSEJ8PikVX3Qkt\",\"status\":\"queued\"}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Length": [
+              "49"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"content\": \"Standup 2026-05-09: shipped capture pipeline, blocked on simulation export, plan to merge fault model PR by EOW.\\n\", \"filepath\": \"/notes/standup-2026-05-09.md\", \"containerTag\": \"smfs_test_workload_v1\", \"metadata\": {\"source\": \"supermemoryfs\", \"lastEditedBy\": \"9BQQ5XGReNGPmwd7KVxbFE\"}}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"id\":\"Zfr1nwpEWg5MSYe8H1UmWJ\",\"status\":\"queued\"}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Length": [
+              "49"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"content\": \"TODO: rebuild qemu cache marker, double-check pin SHA, validate external mocks json.\\n\", \"filepath\": \"/scratch/todo.md\", \"containerTag\": \"smfs_test_workload_v1\", \"metadata\": {\"source\": \"supermemoryfs\", \"lastEditedBy\": \"9BQQ5XGReNGPmwd7KVxbFE\"}}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"id\":\"LcMvpqWr9psNQJgDohWWSp\",\"status\":\"queued\"}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Length": [
+              "49"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "glob",
+              "value": "*Content-Disposition: form-data*"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents/file"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"id\":\"1E6rGHFr12XvtPfLLsM2ME\",\"status\":\"queued\"}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Length": [
+              "49"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"containerTags\": [\"smfs_test_workload_v1\"], \"limit\": 100, \"page\": 1, \"includeContent\": true, \"filepath\": \"/notes/\"}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents/list"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"memories\":[{\"connectionId\":null,\"containerTags\":[\"smfs_test_workload_v1\"],\"createdAt\":\"2026-05-10T23:28:07.437Z\",\"customId\":null,\"filepath\":\"/notes/standup-2026-05-09.md\",\"id\":\"Zfr1nwpEWg5MSYe8H1UmWJ\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"status\":\"done\",\"summary\":null,\"title\":\"Standup 2026-05-09: shipped capture pipeline, bloc...\",\"type\":\"text\",\"updatedAt\":\"2026-05-10T23:28:15.467Z\",\"url\":null,\"content\":\"Standup 2026-05-09: shipped capture pipeline, blocked on simulation export, plan to merge fault model PR by EOW.\"},{\"connectionId\":null,\"containerTags\":[\"smfs_test_workload_v1\"],\"createdAt\":\"2026-05-10T23:28:05.623Z\",\"customId\":null,\"filepath\":\"/notes/postgres-tuning.md\",\"id\":\"mXEFSDFVHArmeGkJ4rbdXF\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"status\":\"done\",\"summary\":null,\"title\":\"# Postgres tuning crib\\n\\nshared_buffers = 25% of RA...\",\"type\":\"text\",\"updatedAt\":\"2026-05-10T23:28:16.348Z\",\"url\":null,\"content\":\"# Postgres tuning crib\\n\\nshared_buffers = 25% of RAM. effective_cache_size ~ 75%. random_page_cost=1.1 on SSD.\"},{\"connectionId\":null,\"containerTags\":[\"smfs_test_workload_v1\"],\"createdAt\":\"2026-05-10T23:28:03.589Z\",\"customId\":null,\"filepath\":\"/notes/design-review-2026q1.md\",\"id\":\"qkDx4fMXKgtHc9pg4WMmmx\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"status\":\"done\",\"summary\":null,\"title\":\"# Design review notes — 2026 Q1\\n\\n- Replication lag...\",\"type\":\"text\",\"updatedAt\":\"2026-05-10T23:28:12.428Z\",\"url\":null,\"content\":\"# Design review notes — 2026 Q1\\n\\n- Replication lag budget: 250ms p99\\n- Failover drill cadence: weekly\"},{\"connectionId\":null,\"containerTags\":[\"smfs_test_workload_v1\"],\"createdAt\":\"2026-05-10T23:28:01.531Z\",\"customId\":null,\"filepath\":\"/notes/oauth.md\",\"id\":\"kTfGX15vkAt8kd1SiFUx1h\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"status\":\"done\",\"summary\":null,\"title\":\"# OAuth refresh token rotation\\n\\nRefresh tokens are...\",\"type\":\"text\",\"updatedAt\":\"2026-05-10T23:28:10.586Z\",\"url\":null,\"content\":\"# OAuth refresh token rotation\\n\\nRefresh tokens are rotated on every use. The server issues a new refresh token alongside each new access token and revokes the old one.\"}],\"pagination\":{\"currentPage\":1,\"limit\":100,\"totalItems\":4,\"totalPages\":1}}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"containerTags\": [\"smfs_test_workload_v1\"], \"limit\": 100, \"page\": 1, \"includeContent\": true, \"filepath\": \"/work/\"}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents/list"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"memories\":[{\"connectionId\":null,\"containerTags\":[\"smfs_test_workload_v1\"],\"createdAt\":\"2026-05-10T23:28:20.655Z\",\"customId\":\"aXBKPYgyPohHCiXffYntwC\",\"filepath\":\"/work/diagrams/network.png\",\"id\":\"1E6rGHFr12XvtPfLLsM2ME\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"status\":\"queued\",\"summary\":null,\"title\":null,\"type\":\"image\",\"updatedAt\":\"2026-05-10T23:28:20.655Z\",\"url\":null,\"content\":\"https://files.supermemory.ai/RdysK147qgRFzWeaLvTsP6.png\"},{\"connectionId\":null,\"containerTags\":[\"smfs_test_workload_v1\"],\"createdAt\":\"2026-05-10T23:28:16.179Z\",\"customId\":null,\"filepath\":\"/work/incidents/2026-05-07-fuse-deadlock.md\",\"id\":\"eC3XYdfUJxRCGXJxbebYt6\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"status\":\"embedding\",\"summary\":null,\"title\":\"Incident: FUSE deadlock when push queue back-press...\",\"type\":\"text\",\"updatedAt\":\"2026-05-10T23:28:22.965Z\",\"url\":null,\"content\":\"Incident: FUSE deadlock when push queue back-pressured the writer thread. Fix: bounded channel + drop-oldest.\"},{\"connectionId\":null,\"containerTags\":[\"smfs_test_workload_v1\"],\"createdAt\":\"2026-05-10T23:28:14.398Z\",\"customId\":null,\"filepath\":\"/work/incidents/2026-05-04-cache-stampede.md\",\"id\":\"nGdGt6hmSA4Li3FJ2f31x3\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"status\":\"done\",\"summary\":null,\"title\":\"Incident: cache stampede on cold start. Mitigation...\",\"type\":\"text\",\"updatedAt\":\"2026-05-10T23:28:23.665Z\",\"url\":null,\"content\":\"Incident: cache stampede on cold start. Mitigation: jittered refresh window.\"},{\"connectionId\":null,\"containerTags\":[\"smfs_test_workload_v1\"],\"createdAt\":\"2026-05-10T23:28:12.584Z\",\"customId\":null,\"filepath\":\"/work/sprint-plan.md\",\"id\":\"iRG9Mqie824jyfP2a51BDd\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"status\":\"done\",\"summary\":null,\"title\":\"# Sprint plan\\n\\n1. Mocks captured for smfs determin...\",\"type\":\"text\",\"updatedAt\":\"2026-05-10T23:28:22.843Z\",\"url\":null,\"content\":\"# Sprint plan\\n\\n1. Mocks captured for smfs deterministic VM\\n2. Workload variants for additions, deletions, mixed\\n3. Fault models: latency, loss, partition\"}],\"pagination\":{\"currentPage\":1,\"limit\":100,\"totalItems\":4,\"totalPages\":1}}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"containerTags\": [\"smfs_test_workload_v1\"], \"limit\": 100, \"page\": 1, \"includeContent\": true}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents/list"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"memories\":[],\"pagination\":{\"currentPage\":1,\"limit\":100,\"totalItems\":0,\"totalPages\":0}}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"containerTags\": [\"smfs_test_workload_v1\"], \"limit\": 100, \"page\": 2, \"includeContent\": true}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v3/documents/list"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"memories\":[],\"pagination\":{\"currentPage\":2,\"limit\":100,\"totalItems\":0,\"totalPages\":0}}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"containerTag\": \"smfs_test_workload_v1\"}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v4/profile"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"profile\":{\"static\":[],\"dynamic\":[]}}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Length": [
+              "38"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"q\": \"OAuth refresh tokens\", \"containerTag\": \"smfs_test_workload_v1\", \"searchMode\": \"hybrid\", \"include\": {\"documents\": true}}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v4/search"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"results\":[{\"id\":\"1MQ842dr6xqkdRHhvuQ1ks\",\"chunk\":\"# OAuth refresh token rotation Refresh tokens are rotated on every use. The server issues a new refresh token alongside each new access token and revokes the old one.\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"filepath\":\"/notes/oauth.md\",\"updatedAt\":\"2026-05-10T23:28:10.586Z\",\"similarity\":0.7300225,\"version\":1,\"documents\":[{\"id\":\"kTfGX15vkAt8kd1SiFUx1h\",\"title\":\"# OAuth refresh token rotation\\n\\nRefresh tokens are...\",\"type\":\"text\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"createdAt\":\"2026-05-10T23:28:01.531Z\",\"updatedAt\":\"2026-05-10T23:28:10.586Z\"}],\"chunks\":[]}],\"timing\":397,\"total\":1}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"q\": \"design review notes\", \"containerTag\": \"smfs_test_workload_v1\", \"searchMode\": \"hybrid\", \"include\": {\"documents\": true}, \"filepath\": \"/notes/\"}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v4/search"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"results\":[{\"id\":\"MbxE68v9JP9VVP1Fo9Rm6B\",\"chunk\":\"# Design review notes — 2026 Q1\\n\\n- Replication lag budget: 250ms p99\\n- Failover drill cadence: weekly\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"filepath\":\"/notes/design-review-2026q1.md\",\"updatedAt\":\"2026-05-10T23:28:12.428Z\",\"similarity\":0.73495018,\"version\":1,\"documents\":[{\"id\":\"qkDx4fMXKgtHc9pg4WMmmx\",\"title\":\"# Design review notes — 2026 Q1\\n\\n- Replication lag...\",\"type\":\"text\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"createdAt\":\"2026-05-10T23:28:03.589Z\",\"updatedAt\":\"2026-05-10T23:28:12.428Z\"}],\"chunks\":[]},{\"id\":\"qS7c9FkrgonT5PBVYjVUgZ\",\"chunk\":\"Standup 2026-05-09: shipped capture pipeline, blocked on simulation export, plan to merge fault model PR by EOW.\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"filepath\":\"/notes/standup-2026-05-09.md\",\"updatedAt\":\"2026-05-10T23:28:15.467Z\",\"similarity\":0.6332518,\"version\":1,\"documents\":[{\"id\":\"Zfr1nwpEWg5MSYe8H1UmWJ\",\"title\":\"Standup 2026-05-09: shipped capture pipeline, bloc...\",\"type\":\"text\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"createdAt\":\"2026-05-10T23:28:07.437Z\",\"updatedAt\":\"2026-05-10T23:28:15.467Z\"}],\"chunks\":[]}],\"timing\":297,\"total\":2}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"q\": \"incident cache stampede\", \"containerTag\": \"smfs_test_workload_v1\", \"searchMode\": \"hybrid\", \"include\": {\"documents\": true}}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v4/search"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"results\":[{\"id\":\"tvWSeqCRzRhS3Bnsvh9fEr\",\"chunk\":\"Incident: cache stampede on cold start. Mitigation: jittered refresh window.\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"filepath\":\"/work/incidents/2026-05-04-cache-stampede.md\",\"updatedAt\":\"2026-05-10T23:28:23.665Z\",\"similarity\":0.78220493,\"version\":1,\"documents\":[{\"id\":\"nGdGt6hmSA4Li3FJ2f31x3\",\"title\":\"Incident: cache stampede on cold start. Mitigation...\",\"type\":\"text\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"createdAt\":\"2026-05-10T23:28:14.398Z\",\"updatedAt\":\"2026-05-10T23:28:23.665Z\"}],\"chunks\":[]},{\"id\":\"MkR3bRbFpn2hGLr1kQaJZE\",\"chunk\":\"Incident: FUSE deadlock when push queue back-pressured the writer thread. Fix: bounded channel + drop-oldest.\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"filepath\":\"/work/incidents/2026-05-07-fuse-deadlock.md\",\"updatedAt\":\"2026-05-10T23:28:24.977Z\",\"similarity\":0.66653574,\"version\":1,\"documents\":[{\"id\":\"eC3XYdfUJxRCGXJxbebYt6\",\"title\":\"Incident: FUSE deadlock when push queue back-press...\",\"type\":\"text\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"createdAt\":\"2026-05-10T23:28:16.179Z\",\"updatedAt\":\"2026-05-10T23:28:24.977Z\"}],\"chunks\":[]},{\"id\":\"qS7c9FkrgonT5PBVYjVUgZ\",\"chunk\":\"Standup 2026-05-09: shipped capture pipeline, blocked on simulation export, plan to merge fault model PR by EOW.\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"filepath\":\"/notes/standup-2026-05-09.md\",\"updatedAt\":\"2026-05-10T23:28:15.467Z\",\"similarity\":0.601512,\"version\":1,\"documents\":[{\"id\":\"Zfr1nwpEWg5MSYe8H1UmWJ\",\"title\":\"Standup 2026-05-09: shipped capture pipeline, bloc...\",\"type\":\"text\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"createdAt\":\"2026-05-10T23:28:07.437Z\",\"updatedAt\":\"2026-05-10T23:28:15.467Z\"}],\"chunks\":[]}],\"timing\":307,\"total\":3}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      },
+      {
+        "request": {
+          "body": [
+            {
+              "matcher": "json",
+              "value": "{\"q\": \"postgres tuning shared_buffers\", \"containerTag\": \"smfs_test_workload_v1\", \"searchMode\": \"hybrid\", \"include\": {\"documents\": true}}"
+            }
+          ],
+          "destination": [
+            {
+              "matcher": "exact",
+              "value": "api.supermemory.ai"
+            }
+          ],
+          "method": [
+            {
+              "matcher": "exact",
+              "value": "POST"
+            }
+          ],
+          "path": [
+            {
+              "matcher": "exact",
+              "value": "/v4/search"
+            }
+          ],
+          "scheme": [
+            {
+              "matcher": "exact",
+              "value": "https"
+            }
+          ]
+        },
+        "response": {
+          "body": "{\"results\":[{\"id\":\"QBzFSETzDX623ZaXAX4KWB\",\"chunk\":\"# Postgres tuning crib shared_buffers = 25% of RAM. effective_cache_size ~ 75%. random_page_cost=1.1 on SSD.\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"filepath\":\"/notes/postgres-tuning.md\",\"updatedAt\":\"2026-05-10T23:28:16.348Z\",\"similarity\":0.77783906,\"version\":1,\"documents\":[{\"id\":\"mXEFSDFVHArmeGkJ4rbdXF\",\"title\":\"# Postgres tuning crib\\n\\nshared_buffers = 25% of RA...\",\"type\":\"text\",\"metadata\":{\"source\":\"supermemoryfs\",\"lastEditedBy\":\"9BQQ5XGReNGPmwd7KVxbFE\"},\"createdAt\":\"2026-05-10T23:28:05.623Z\",\"updatedAt\":\"2026-05-10T23:28:16.348Z\"}],\"chunks\":[]}],\"timing\":307,\"total\":1}",
+          "encodedBody": false,
+          "headers": {
+            "Access-Control-Allow-Credentials": [
+              "true"
+            ],
+            "Access-Control-Expose-Headers": [
+              "x-playground-search-data,x-playground-system-prompt,x-playground-profile"
+            ],
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "status": 200,
+          "templated": false
+        }
+      }
+    ]
+  },
+  "meta": {
+    "hoverflyVersion": "v1.12.7",
+    "schemaVersion": "v5.2",
+    "timeExported": "2026-05-10T16:28:38-07:00"
+  }
+}
